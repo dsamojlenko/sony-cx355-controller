@@ -1,0 +1,36 @@
+# PlatformIO build files
+.pio/
+.pioenvs/
+.piolibdeps/
+.pio/libdeps/
+
+# VSCode settings
+.vscode/
+*.code-workspace
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Python virtual envs
+venv/
+.env/
+
+# Backup / temp files
+*.orig
+*.bak
+*.tmp
+*.swp
+
+# Arduino-generated junk
+*.elf
+*.bin
+*.map
+
+# Logs
+*.log
+
+# Firmware artifacts
+firmware.bin
+bootloader.bin
+partitions.bin
