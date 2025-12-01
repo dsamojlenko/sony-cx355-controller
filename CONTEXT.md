@@ -1,76 +1,121 @@
-# Sony CX355 S‑Link Reverse Engineering — Technical Notes
+# CONTEXT.md — Sony CX355 Display Project Context
 
-## 1. S‑Link Overview
-Sony Control‑A1 is a bidirectional serial bus using pulse‑width modulation:
-- Sync: ~2400 µs low
-- “1” bit: ~1200 µs low
-- “0” bit: ~600 µs low
-- Each bit ends with a ~600 µs high delimiter.
+## 1. Project Overview
+This project builds a custom external display system for the Sony CDP-CX355 300-disc CD changer using an ESP32. Its goal is to show:
 
-Frames begin with:
+- Current disc number
+- Current track number
+- Transport state (Play, Pause, Stop)
+- Eventually CD metadata from a local database
+
+Only Player 1 (the 300-disc unit) is used. Player 2 is disconnected.
+
+## 2. Hardware Summary
+
+### 2.1 ESP32-WROOM-32D
+3.3V logic, dual-core, ideal for decoding and higher-level features.
+
+### 2.2 S-Link Bus
+- Single-wire bidirectional serial bus
+- Open-collector 5V
+- Idle high via internal Sony pull-up
+- Data represented by pulse-width encoding
+
+### 2.3 RX Circuit
+- 2N3904 transistor
+- 22k base resistor → S-Link line
+- Emitter → GND
+- Collector → ESP32 GPIO 34
+- 10k pull-up to 3.3V
+
+### 2.4 TX Circuit
+- 2N3904 transistor
+- 1k base resistor from GPIO 25
+- Emitter → GND
+- Collector → S-Link line
+
+ESP32 pulls the line LOW through the transistor, never drives it HIGH.
+
+### 2.5 Grounding
+ESP32 GND must connect to the Sony chassis.
+
+## 3. Software Architecture
+
 ```
-41 40 …
+sony-cx355-display/
+  firmware/
+    src/
+      main.cpp
+      slink_rx.cpp
+      slink_tx.cpp
+      decoder.cpp
+    include/
 ```
 
-## 2. Frame Types
-### Transport (4 bytes)
-Examples:
+### 3.1 RX Module
+- Reads pulse widths
+- Converts pulses into bits
+- Assembles bytes and frames
+
+### 3.2 Decoder Module
+- Detects valid status frames
+- Extracts disc & track
+- Handles 1–300 disc mapping
+- Handles PLAY/STOP/PAUSE
+
+### 3.3 TX Module
+Minimal so far; sends:
+- 0x90 0x00 (play)
+- 0x90 0x01 (stop)
+- 0x90 0x25 (status request)
+
+## 4. Reverse-Engineering Findings
+
+### 4.1 Frame Types
+
+Transport:
+- 41 40 00 00 → stop
+- 41 40 00 04 → pause
+- 41 40 00 40 → transition
+- 41 04 00 55 → transition/noise
+
+Status:
 ```
-41 40 00 00   idle
-41 40 00 40   STOP
-41 40 00 04   PAUSE toggle
+41 40 11 00 [D1] [D2] [T1] [T2] [X1] [X2] [X3] [X4]
 ```
 
-### Status (12 bytes)
-```
-41 40 11 00  [DiscHi] [DiscLo] [TrackHi] [TrackLo] [A] [B] [C] [D]
-```
+### 4.2 Disc Number Encoding (300 discs)
 
-A/B/C/D vary with track position but do **not** encode disc/track.
+#### Discs 1–99
+Standard BCD-like.
 
-## 3. Disc/Track Decoding
+#### Discs 100–199
+HEX-54 scheme from old Sony docs.
 
-### Discs 1–199 (Player 1)
-DiscCode maps linearly:
-```
-DiscNumber = DiscCode
-```
+#### Discs 200–300
+Undocumented. Mapping derived from captured frames.
 
-### Disc 200
-DiscCode:
-```
-55 54 → 200
-```
+### 4.3 Track Encoding
+BCD-like; reliable.
 
-### Discs 201–300 (Player 2)
-When Player 2 is disconnected, these discs emit NO frames.
-With Player 2 connected, DiscCodes follow a second lookup pattern.
+### 4.4 Transport State Codes
+- 0x00 → STOP
+- 0x04 → PAUSE
+- 0x40 / 0x14 → loading or transitional
 
-Decoder must track which unit emitted the frame.
+## 5. Known Limitations
+- Player 2 required for proper bus bias (current hardware setup)
+- Extended 14-byte frames not decoded
+- Track time not decoded yet
+- RX decoding could be rewritten using ESP32 RMT for robustness
 
-## 4. Track Decoding
-TrackCode = TrackNumber  
-Confirmed reliable up to at least track 99.
+## 6. Next Steps
+- Modularize firmware
+- Add UI & display
+- Create disc database in SPIFFS/SD
+- Consider ESP32 web UI
+- Improve TX bus behavior
+- Add full 300-disc lookup table
 
-## 5. Hardware Architecture
-### RX Path
-- 2N3904 transistor inverts + level shifts S‑Link
-- Collector → ESP32 GPIO34 → 47k → 3.3V
-
-### TX Path
-- ESP32 drives 2N3904 to pull line low
-- Collector connected to S‑Link pin
-
-## 6. Firmware Architecture
-- Pulse ISR decoder  
-- Frame parser  
-- Disc/track extraction  
-- Player‑number inference  
-- Event hooks for UI/display
-
-## 7. Findings
-✔ Full decoding for discs 1–199  
-✔ Decoding for 200–300 when Player 2 is present  
-✔ Reliable TX/RX when both players are connected  
-✔ Verified against Ircama’s Sony_SLink reference implementation  
-
+## 7. Summary
+This project reverse-engineers undocumented details of the Sony CX355 S-Link behavior, enabling an ESP32 to reliably decode disc and track numbers across the full 300-disc range. This document provides context for all future contributors.
