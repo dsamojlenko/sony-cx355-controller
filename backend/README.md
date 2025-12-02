@@ -1,15 +1,17 @@
 # CD Jukebox Backend
 
-Node.js backend server for the Sony CX355 CD Jukebox system.
+Node.js backend server for the Sony CX355 CD Jukebox system. Supports two 300-disc CD changers (600 CDs total).
 
 ## Features
 
-- ✅ REST API for disc management and playback control
-- ✅ WebSocket support for real-time updates
-- ✅ SQLite database for disc metadata
-- ✅ MusicBrainz integration for album info and cover art
-- ✅ ESP32 command queue and polling
-- ✅ CSV import for bulk disc data
+- REST API for disc management and playback control
+- WebSocket support for real-time updates
+- SQLite database for disc metadata
+- MusicBrainz integration with auto-enrichment on first access
+- Cover art download from Cover Art Archive
+- ESP32 command queue and polling
+- mDNS service advertisement for ESP32 discovery
+- CSV import for bulk disc data
 
 ## Setup
 
@@ -22,10 +24,14 @@ npm install
 ### 2. Import CD Data
 
 ```bash
-npm run import "../CD Player Contents.csv"
+# Import as player 1
+npm run import -- ../your-discs.csv
+
+# Import as player 2
+npm run import -- ../your-discs.csv --player 2
 ```
 
-This will create the database and import all 300 discs from your CSV file.
+CSV format: `Disc #,Artist,Album` (optional: `Player` column)
 
 ### 3. Start Server
 
@@ -39,83 +45,78 @@ npm run dev
 npm start
 ```
 
-The server will start on port 3000 (or the port specified in `.env`).
+The server starts on port 3000 and advertises via mDNS as `_cdjukebox._tcp`.
 
 ## API Endpoints
 
 ### Disc Management
 
-- `GET /api/discs` - List all discs (with search/pagination)
-  - Query params: `search`, `sort`, `limit`, `offset`
-- `GET /api/discs/:position` - Get single disc with tracks
-- `POST /api/discs/:position` - Update disc metadata
+- `GET /api/discs` - List all discs
+  - Query params: `player`, `search`, `sort`, `limit`, `offset`
+- `GET /api/discs/:player/:position` - Get disc with tracks (auto-enriches if needed)
+- `POST /api/discs/:player/:position` - Update disc metadata
 
-### Playback
+### Playback State
 
-- `GET /api/current` - Get current playback state
+- `GET /api/current` - Get current playback state with disc metadata
 - `POST /api/state` - Update playback state (from ESP32)
+  - Body: `{player, disc, track, state}`
 
-### Control
+### Control Commands
 
-- `POST /api/control/play` - Play disc/track
-- `POST /api/control/pause` - Pause playback
-- `POST /api/control/stop` - Stop playback
-- `POST /api/control/next` - Next track
-- `POST /api/control/previous` - Previous track
+- `POST /api/command` - Queue a command for ESP32
+  - Body: `{command, player?, disc?, track?}`
+  - Commands: `play`, `pause`, `stop`, `next`, `previous`
 
 ### ESP32 Communication
 
 - `GET /api/esp32/poll` - Poll for pending commands
 - `POST /api/esp32/ack` - Acknowledge command execution
+  - Body: `{id, success}`
 
 ### MusicBrainz Integration
 
-- `GET /api/search/musicbrainz?artist=...&album=...` - Search for releases
-- `POST /api/enrich/:position` - Enrich disc with MusicBrainz data
-  - Body: `{ "musicbrainzId": "..." }` (optional)
+- `POST /api/enrich/:player/:position` - Force re-enrichment
+  - Body: `{}` or `{releaseId: "mbid-..."}`
+
+Note: Enrichment happens automatically on first `GET /api/discs/:player/:position` if metadata is missing.
 
 ### Statistics
 
 - `GET /api/stats` - Get playback statistics
 
-## WebSocket Events
-
-**Client → Server:**
-- `subscribe` - Subscribe to updates
-- `unsubscribe` - Unsubscribe from updates
-
-**Server → Client:**
-- `state` - Playback state changed
-- `metadata_updated` - Disc metadata updated
-
 ## Example Usage
+
+### Get disc info (auto-enriches with MusicBrainz)
+```bash
+curl "http://localhost:3000/api/discs/1/42"
+```
 
 ### Search for discs
 ```bash
 curl "http://localhost:3000/api/discs?search=radiohead"
 ```
 
-### Get disc details
+### Filter by player
 ```bash
-curl "http://localhost:3000/api/discs/2"
+curl "http://localhost:3000/api/discs?player=1"
 ```
 
 ### Play a disc
 ```bash
-curl -X POST http://localhost:3000/api/control/play \
+curl -X POST http://localhost:3000/api/command \
   -H "Content-Type: application/json" \
-  -d '{"disc": 2, "track": 1}'
+  -d '{"command": "play", "player": 1, "disc": 42, "track": 1}'
 ```
 
-### Enrich disc with MusicBrainz data
+### Get current playback state
 ```bash
-# First, search for the release
-curl "http://localhost:3000/api/search/musicbrainz?artist=Radiohead&album=OK%20Computer"
+curl "http://localhost:3000/api/current"
+```
 
-# Then enrich with the chosen release ID
-curl -X POST http://localhost:3000/api/enrich/2 \
-  -H "Content-Type: application/json" \
-  -d '{"musicbrainzId": "e16cda60-6e6d-4a32-8d7c-e12d9aeb72de"}'
+### View cover art
+```bash
+open http://localhost:3000/covers/p1-42.jpg
 ```
 
 ## Directory Structure
@@ -134,9 +135,8 @@ backend/
 │   │   └── import-csv.js       # CSV import script
 │   └── server.js               # Main server file
 ├── data/
-│   └── jukebox.db              # SQLite database (created on init)
-├── public/
-│   └── covers/                 # Cover art cache
+│   ├── jukebox.db              # SQLite database
+│   └── covers/                 # Cover art cache (p{player}-{position}.jpg)
 ├── package.json
 └── README.md
 ```
@@ -144,23 +144,27 @@ backend/
 ## Database Schema
 
 ### `discs` table
+- `id` (primary key)
+- `player` (1 or 2)
 - `position` (1-300)
 - `artist`, `album`
 - `musicbrainz_id`, `year`, `genre`
 - `cover_art_path`
 - `track_count`, `duration_seconds`
 - `play_count`, `last_played`
+- UNIQUE constraint on `(player, position)`
 
 ### `tracks` table
-- `disc_position`, `track_number`
+- `disc_id` (foreign key)
+- `track_number`
 - `title`, `duration_seconds`
 
 ### `playback_state` table
-- `current_disc`, `current_track`
+- `current_player`, `current_disc`, `current_track`
 - `state` (play/pause/stop)
 
 ### `command_queue` table
-- `id`, `command`, `disc`, `track`
+- `id`, `command`, `player`, `disc`, `track`
 - `acknowledged`
 
 ## Development
@@ -172,7 +176,8 @@ npm run dev
 
 ### Re-import CSV data
 ```bash
-npm run import "../CD Player Contents.csv"
+npm run import -- ../your-discs.csv
+npm run import -- ../your-discs.csv --player 2
 ```
 
 ## Production Deployment (Raspberry Pi)
@@ -186,10 +191,10 @@ sudo apt-get install -y nodejs
 ### 2. Clone and setup
 ```bash
 cd /home/pi
-git clone <repo-url> sony-cx355-controller
-cd sony-cx355-controller/backend
+git clone <repo-url> sony-cx355-display
+cd sony-cx355-display/backend
 npm install
-npm run import "../CD Player Contents.csv"
+npm run import -- ../your-discs.csv
 ```
 
 ### 3. Run with PM2
@@ -202,7 +207,7 @@ pm2 startup
 
 ### 4. Access
 - API: `http://<raspberry-pi-ip>:3000/api`
-- Web UI: `http://<raspberry-pi-ip>:3000`
+- Cover art: `http://<raspberry-pi-ip>:3000/covers/p1-42.jpg`
 
 ## License
 

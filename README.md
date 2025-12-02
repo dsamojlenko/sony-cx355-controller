@@ -1,170 +1,139 @@
 # Sony CX355 CD Jukebox System
 
-A complete jukebox system for the Sony CDP‑CX355 300-disc CD changer, featuring ESP32 S-Link interface, Node.js backend, and web-based display.
+A complete jukebox system for two Sony CDP‑CX355 300-disc CD changers (600 CDs total), featuring ESP32 S-Link interface, Node.js backend with automatic MusicBrainz metadata enrichment.
 
-## 🎵 What This Does
+## What This Does
 
-Transform your vintage CD changer into a modern jukebox:
-- **Real-time display** of album art, track listings, and playback status
-- **Browse and search** all 300 CDs from any device
-- **Remote control** via web interface (phone, tablet, computer)
-- **Automatic metadata** from MusicBrainz (album info, cover art, tracks)
+Transform your vintage CD changers into a modern jukebox:
+- **Real-time tracking** of disc, track, and playback state via S-Link protocol
+- **Remote control** via web API (play, pause, stop, next/prev, select disc)
+- **Automatic metadata** from MusicBrainz (year, track listings, cover art)
+- **Multi-player support** for two CD changers (600 disc capacity)
 
-## 📁 Project Structure
+## Project Structure
 
 ```
-sony-cx355-controller/
+sony-cx355-display/
 ├── firmware/          # ESP32 S-Link interface (PlatformIO)
 ├── backend/           # Node.js API server
-├── mockup.html        # UI design preview
-├── PROJECT_PLAN.md    # Detailed implementation plan
+├── CONTEXT.md         # AI assistant context (CLAUDE.md style)
 ├── ARCHITECTURE.md    # Technical architecture docs
-└── CONTEXT.md         # S-Link protocol documentation
+└── PROJECT_PLAN.md    # Implementation roadmap
 ```
 
-## 🚀 Quick Start
+## Quick Start
 
-### 1. ESP32 Firmware (Already Working!)
-The ESP32 can already decode S-Link frames from the CD player.
+### 1. Backend Server
 
-**Build and upload:**
-```bash
-cd firmware
-pio run -t upload
-```
-
-See [CONTEXT.md](CONTEXT.md) for S-Link protocol details.
-
-### 2. Backend Server (NEW!)
-Node.js server with REST API, WebSocket, and MusicBrainz integration.
-
-**Setup:**
 ```bash
 cd backend
 npm install
-npm run import "../CD Player Contents.csv"
+
+# Import your disc catalog
+npm run import -- ../your-discs.csv
+
+# Start server (advertises via mDNS for ESP32 discovery)
 npm start
 ```
 
-See [backend/GETTING_STARTED.md](backend/GETTING_STARTED.md) for detailed instructions.
+The backend auto-enriches discs with MusicBrainz metadata on first access.
 
-**Features:**
-- REST API for disc management and playback control
-- WebSocket for real-time updates
-- SQLite database (300 discs imported from CSV)
-- MusicBrainz integration for metadata enrichment
-- ESP32 command queue and polling
+### 2. ESP32 Firmware
 
-### 3. Web UI (Coming Soon)
-Modern web interface for browsing and controlling your CD collection.
+```bash
+cd firmware
+cp include/secrets.h.example include/secrets.h  # Add WiFi credentials
+pio run -t upload
+pio device monitor  # Serial console for testing
+```
 
-**Preview:** Open [mockup.html](mockup.html) in a browser to see the design!
+Serial commands: `p` (play), `s` (stop), `d125` (play disc 125), `d125t5` (disc 125 track 5), `h` (help)
 
-## 🎯 Current Status
+See [CONTEXT.md](CONTEXT.md) for S-Link protocol details.
 
-- ✅ **ESP32 Firmware** - S-Link RX/TX working
-- ✅ **Backend API** - Complete and ready to test
-- ✅ **CSV Import** - All 300 discs loaded
-- ✅ **MusicBrainz Integration** - Metadata enrichment ready
-- ✅ **UI Mockup** - Design approved
-- ⏳ **Web UI** - Next phase
-- ⏳ **ESP32 WiFi** - To be added
+## Current Status
 
-## 🔧 Hardware Requirements
+| Component | Status |
+|-----------|--------|
+| S-Link RX decoding | ✅ Complete (all 300 discs, both players) |
+| S-Link TX commands | ✅ Complete (play, stop, pause, next/prev, disc select) |
+| ESP32 WiFi | ✅ Complete (auto-connect, mDNS discovery) |
+| Backend API | ✅ Complete (REST endpoints, command queue) |
+| MusicBrainz enrichment | ✅ Complete (auto-fetch on first access) |
+| Cover art | ✅ Complete (from Cover Art Archive) |
+| Web UI | 🚧 Planned |
+
+## Hardware
 
 ### ESP32 Interface
 - ESP32 Dev Module (WROOM-32D)
-- 2× 2N3904 transistors (RX + TX)
-- RX: 47k pull-up, 22k base resistor
-- TX: 22k base resistor
+- 2× 2N3904 transistors (RX + TX level shifting)
+- RX: 10k pull-up to 3.3V, 22k base resistor
+- TX: 1k base resistor
 - Shared ground with CD player
 
-### Display
-- Raspberry Pi 3/4 (for backend + HDMI display)
-- Monitor (HDMI)
-- OR: Any computer/phone with web browser
+### Sony Command Mode Setup
+For two players, configure the rear switches:
+- Player 1: Command Mode 1
+- Player 2: Command Mode 3
 
-## 📖 Documentation
+## Architecture
 
-- [PROJECT_PLAN.md](PROJECT_PLAN.md) - Implementation roadmap and phases
-- [ARCHITECTURE.md](ARCHITECTURE.md) - System architecture and data flows
-- [CONTEXT.md](CONTEXT.md) - S-Link protocol reverse engineering
-- [backend/README.md](backend/README.md) - Backend API documentation
-- [backend/GETTING_STARTED.md](backend/GETTING_STARTED.md) - Backend quick start guide
+```
+┌─────────────┐    S-Link     ┌─────────┐    WiFi/HTTP    ┌─────────────┐
+│ CD Player 1 │──────────────►│         │◄──────────────►│             │
+│ CD Player 2 │──────────────►│  ESP32  │                 │   Backend   │
+└─────────────┘               │         │────────────────►│  (Node.js)  │
+                              └─────────┘   State updates │             │
+                                    ▲                     │  ┌───────┐  │
+                                    │                     │  │SQLite │  │
+                              Commands from               │  └───────┘  │
+                              command queue               │      ↓      │
+                                                         │ MusicBrainz │
+                                                         └─────────────┘
+```
 
-## 🧪 Test the Backend
+## API Examples
 
 ```bash
-# Get all discs
-curl http://localhost:3000/api/discs | jq .
+# Get current playback state
+curl http://localhost:3000/api/current
 
-# Get disc #2 (Radiohead - OK Computer)
-curl http://localhost:3000/api/discs/2 | jq .
+# Get disc info (auto-enriches with MusicBrainz)
+curl http://localhost:3000/api/discs/1/125
 
-# Enrich with MusicBrainz metadata
-curl -X POST http://localhost:3000/api/enrich/2 \
+# Send play command
+curl -X POST http://localhost:3000/api/command \
   -H "Content-Type: application/json" \
-  -d '{}' | jq .
+  -d '{"command": "play", "player": 1, "disc": 125, "track": 1}'
 
 # View cover art
-open http://localhost:3000/covers/2.jpg
+open http://localhost:3000/covers/p1-125.jpg
 ```
 
-## 🎨 UI Preview
+## Documentation
 
-Open [mockup.html](mockup.html) to see a high-fidelity mockup of the album detail view, featuring:
-- Real MusicBrainz data for Radiohead's OK Computer
-- Album artwork from Cover Art Archive
-- Complete track listings
-- Transport controls
-- Recently played carousel
-- Quick action buttons
+- [CONTEXT.md](CONTEXT.md) - Project context for AI assistants
+- [ARCHITECTURE.md](ARCHITECTURE.md) - System architecture diagrams
+- [backend/README.md](backend/README.md) - Backend API documentation
+- [backend/GETTING_STARTED.md](backend/GETTING_STARTED.md) - Backend setup guide
 
-## 📡 Architecture
+## Roadmap
 
-```
-CD Player ──S-Link──> ESP32 ──WiFi/HTTP──> Backend (Pi) ──WebSocket──> Web UI
-                                              ↓
-                                         MusicBrainz API
-                                         SQLite Database
-```
+**Completed:**
+- [x] S-Link RX/TX firmware
+- [x] ESP32 WiFi connectivity
+- [x] Backend REST API
+- [x] MusicBrainz auto-enrichment
+- [x] Cover art download
+- [x] Multi-player support
 
-## 🛣️ Roadmap
-
-**Phase 1: Backend** ✅ COMPLETE
-- [x] Database schema
-- [x] REST API
-- [x] WebSocket support
-- [x] MusicBrainz integration
-- [x] CSV import
-
-**Phase 2: ESP32 WiFi** (Next)
-- [ ] WiFi client
-- [ ] HTTP state updates
-- [ ] Command polling
-- [ ] S-Link TX expansion
-
-**Phase 3: Web UI** (In Progress)
-- [ ] Now Playing view
-- [ ] Browse/search interface
-- [ ] Control interface
-- [ ] Mobile responsive
-
-**Phase 4: Metadata Enrichment**
-- [ ] Admin UI for MusicBrainz search
-- [ ] Bulk enrichment tools
-- [ ] Cover art management
-
-**Phase 5: Polish**
-- [ ] Statistics dashboard
+**Planned:**
+- [ ] Web UI for browsing and control
+- [ ] Physical display on ESP32
+- [ ] Disc management UI
 - [ ] Playlist support
-- [ ] Enhanced animations
-- [ ] Physical controls (optional)
 
-## 🤝 Contributing
-
-This is a personal project, but feel free to fork and adapt for your own vintage CD changers!
-
-## 📄 License
+## License
 
 MIT

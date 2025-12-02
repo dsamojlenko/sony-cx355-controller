@@ -1,7 +1,9 @@
 # System Architecture - Sony CX355 Jukebox
 
 ## Overview
-Three-tier system: ESP32 ↔ Backend (Pi) ↔ Web UI (Multiple Devices)
+Three-tier system for controlling two Sony CDP-CX355 300-disc CD changers (600 CDs total):
+
+ESP32 ↔ Backend (Node.js) ↔ Web UI (Multiple Devices)
 
 ---
 
@@ -40,14 +42,15 @@ Three-tier system: ESP32 ↔ Backend (Pi) ↔ Web UI (Multiple Devices)
 │                                                              │
 │  ┌────────────────────────────────────────────────────────┐ │
 │  │  SQLite Database                                       │ │
-│  │  - discs (300 entries)                                │ │
+│  │  - discs (600 entries: 2 players × 300)              │ │
 │  │  - tracks                                             │ │
 │  │  - playback_state                                     │ │
+│  │  - command_queue                                      │ │
 │  └────────────────────────────────────────────────────────┘ │
 │                                                              │
 │  ┌────────────────────────────────────────────────────────┐ │
 │  │  File System                                           │ │
-│  │  - /covers/*.jpg (cached album art)                   │ │
+│  │  - /covers/p{player}-{position}.jpg (cover art)      │ │
 │  └────────────────────────────────────────────────────────┘ │
 └──────────────────────────┬───────────────────────────────────┘
                            │
@@ -95,15 +98,15 @@ Three-tier system: ESP32 ↔ Backend (Pi) ↔ Web UI (Multiple Devices)
 
 ### Flow 1: Status Update (CD Playing)
 ```
-CD Player                ESP32              Backend (Pi)        Web UI
+CD Player                ESP32              Backend            Web UI
     │                      │                      │                │
     │──S-Link Status──────▶│                      │                │
-    │  (Disc 42, Trk 5)    │                      │                │
+    │  (P1 Disc 42 Trk 5)  │                      │                │
     │                      │                      │                │
     │                      │──HTTP POST──────────▶│                │
     │                      │  /api/state          │                │
-    │                      │  {disc:42,track:5}   │                │
-    │                      │                      │                │
+    │                      │  {player:1,disc:42,  │                │
+    │                      │   track:5,state:play}│                │
     │                      │                      │──DB Update────▶│
     │                      │                      │                │
     │                      │                      │──WebSocket────▶│
@@ -116,40 +119,40 @@ CD Player                ESP32              Backend (Pi)        Web UI
 
 ### Flow 2: User Selects Album to Play (Jukebox)
 ```
-Web UI                Backend (Pi)           ESP32            CD Player
+Web UI                Backend                ESP32            CD Player
    │                      │                      │                │
    │──User Clicks─────▶   │                      │                │
-   │  "Play Disc 73"      │                      │                │
+   │  "Play P1 Disc 73"   │                      │                │
    │                      │                      │                │
    │──HTTP POST──────────▶│                      │                │
-   │  /api/control/play   │                      │                │
-   │  {disc:73}           │                      │                │
+   │  /api/command        │                      │                │
+   │  {command:"play",    │                      │                │
+   │   player:1,disc:73}  │                      │                │
    │                      │                      │                │
-   │                      │──Queue Command──────▶│                │
-   │                      │  HTTP GET/POST       │                │
-   │◀──HTTP 200 OK───────│  {action:"play",     │                │
-   │  {status:"queued"}   │   disc:73}           │                │
+   │                      │──ESP32 Polls────────▶│                │
+   │◀──HTTP 200 OK───────│  GET /api/esp32/poll │                │
+   │  {id:"cmd-123"...}   │  {action:"play",...} │                │
    │                      │                      │                │
    │                      │                      │──S-Link TX────▶│
    │                      │                      │  Play Disc 73  │
    │                      │                      │                │
    │                      │                      │◀──S-Link RX────│
    │                      │◀──Status Update─────│  (Confirmation)│
-   │                      │  (Disc 73 playing)   │                │
+   │                      │  POST /api/state     │                │
    │                      │                      │                │
    │◀──WebSocket─────────│                      │                │
    │  State update        │                      │                │
    │                      │                      │                │
    │──UI Update──────▶    │                      │                │
-   │  (Show Disc 73)      │                      │                │
+   │  (Show P1 Disc 73)   │                      │                │
 ```
 
-### Flow 3: Metadata Enrichment
+### Flow 3: Metadata Enrichment (Auto on First Access)
 ```
-Backend (Pi)           MusicBrainz API      Cover Art Archive
+Backend                MusicBrainz API      Cover Art Archive
      │                      │                      │
-     │──On First Play──▶    │                      │
-     │  Disc 42             │                      │
+     │──GET /api/discs/1/42─│                      │
+     │  (metadata missing)  │                      │
      │  Artist: "Radiohead" │                      │
      │  Album: "OK Computer"│                      │
      │                      │                      │
@@ -170,7 +173,7 @@ Backend (Pi)           MusicBrainz API      Cover Art Archive
      │◀──JPEG Image────────────────────────────────│
      │                      │                      │
      │──Save to FS─────▶    │                      │
-     │  /covers/42.jpg      │                      │
+     │  /covers/p1-42.jpg   │                      │
 ```
 
 ---
@@ -259,44 +262,59 @@ Polling is simpler and 500ms is acceptable for user-initiated commands. WebSocke
 
 ```sql
 CREATE TABLE discs (
-  position INTEGER PRIMARY KEY,      -- 1-300
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  player INTEGER NOT NULL DEFAULT 1 CHECK(player IN (1, 2)),  -- Player 1 or 2
+  position INTEGER NOT NULL CHECK(position >= 1 AND position <= 300),  -- Slot 1-300
   artist TEXT NOT NULL,
   album TEXT NOT NULL,
   musicbrainz_id TEXT,               -- MBID from MusicBrainz
   year INTEGER,
-  cover_art_path TEXT,               -- e.g., /covers/42.jpg
+  cover_art_path TEXT,               -- e.g., covers/p1-42.jpg
   genre TEXT,
   duration_seconds INTEGER,
   track_count INTEGER,
   last_played DATETIME,
   play_count INTEGER DEFAULT 0,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(player, position)           -- Each slot unique per player
 );
 
 CREATE TABLE tracks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  disc_position INTEGER NOT NULL,
+  disc_id INTEGER NOT NULL,
   track_number INTEGER NOT NULL,
   title TEXT NOT NULL,
   duration_seconds INTEGER,
-  FOREIGN KEY (disc_position) REFERENCES discs(position),
-  UNIQUE(disc_position, track_number)
+  FOREIGN KEY (disc_id) REFERENCES discs(id) ON DELETE CASCADE,
+  UNIQUE(disc_id, track_number)
 );
 
 CREATE TABLE playback_state (
   id INTEGER PRIMARY KEY CHECK (id = 1),  -- Single row
+  current_player INTEGER CHECK(current_player IN (1, 2)),
   current_disc INTEGER,
   current_track INTEGER,
   state TEXT CHECK(state IN ('play', 'pause', 'stop')),
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (current_disc) REFERENCES discs(position)
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE command_queue (
+  id TEXT PRIMARY KEY,
+  command TEXT NOT NULL,
+  player INTEGER,
+  disc INTEGER,
+  track INTEGER,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  acknowledged INTEGER DEFAULT 0
+);
+
+CREATE INDEX idx_discs_player ON discs(player);
 CREATE INDEX idx_discs_artist ON discs(artist);
 CREATE INDEX idx_discs_album ON discs(album);
 CREATE INDEX idx_discs_last_played ON discs(last_played DESC);
-CREATE INDEX idx_tracks_disc ON tracks(disc_position);
+CREATE INDEX idx_tracks_disc ON tracks(disc_id);
+CREATE INDEX idx_command_queue_ack ON command_queue(acknowledged);
 ```
 
 ---
@@ -307,7 +325,7 @@ CREATE INDEX idx_tracks_disc ON tracks(disc_position);
 
 **POST /api/state**
 - **From:** ESP32
-- **Body:** `{disc: 42, track: 5, state: "play"}`
+- **Body:** `{player: 1, disc: 42, track: 5, state: "play"}`
 - **Response:** `{success: true}`
 - **Side effects:**
   - Update `playback_state` table
@@ -320,16 +338,16 @@ CREATE INDEX idx_tracks_disc ON tracks(disc_position);
 - **Response:**
   ```json
   {
-    "disc": 42,
-    "track": 5,
+    "current_player": 1,
+    "current_disc": 42,
+    "current_track": 5,
     "state": "play",
-    "metadata": {
-      "artist": "Radiohead",
-      "album": "OK Computer",
-      "year": 1997,
-      "coverArt": "/covers/42.jpg",
-      "trackTitle": "Paranoid Android"
-    }
+    "artist": "Radiohead",
+    "album": "OK Computer",
+    "year": 1997,
+    "cover_art_path": "covers/p1-42.jpg",
+    "track_title": "Paranoid Android",
+    "track_duration": 383
   }
   ```
 
@@ -339,79 +357,80 @@ CREATE INDEX idx_tracks_disc ON tracks(disc_position);
 
 **GET /api/discs**
 - **Query params:**
+  - `player` (filter by player 1 or 2)
   - `search` (filter by artist/album)
-  - `sort` (artist/album/position/lastPlayed)
+  - `sort` (artist/album/position/lastPlayed/playCount)
   - `limit`, `offset` (pagination)
 - **Response:**
   ```json
   {
-    "total": 300,
+    "total": 600,
     "discs": [
       {
+        "player": 1,
         "position": 1,
         "artist": "The Strokes",
         "album": "This is it",
-        "coverArt": "/covers/1.jpg",
+        "cover_art_path": "covers/p1-1.jpg",
         "year": 2001,
-        "trackCount": 11,
-        "playCount": 42
+        "track_count": 11,
+        "play_count": 42
       },
       ...
     ]
   }
   ```
 
-**GET /api/discs/:position**
+**GET /api/discs/:player/:position**
+- **Auto-enriches** with MusicBrainz on first access if metadata missing
 - **Response:**
   ```json
   {
+    "id": 42,
+    "player": 1,
     "position": 42,
     "artist": "Radiohead",
     "album": "OK Computer",
+    "musicbrainz_id": "a1b2c3d4-...",
     "year": 1997,
-    "coverArt": "/covers/42.jpg",
+    "cover_art_path": "covers/p1-42.jpg",
     "genre": "Alternative Rock",
+    "track_count": 12,
     "tracks": [
-      {"number": 1, "title": "Airbag", "duration": 284},
-      {"number": 2, "title": "Paranoid Android", "duration": 383},
+      {"track_number": 1, "title": "Airbag", "duration_seconds": 284},
+      {"track_number": 2, "title": "Paranoid Android", "duration_seconds": 383},
       ...
     ],
-    "playCount": 15,
-    "lastPlayed": "2025-11-30T10:30:00Z"
+    "play_count": 15,
+    "last_played": "2025-11-30T10:30:00Z"
   }
   ```
 
-**POST /api/discs/:position**
+**POST /api/discs/:player/:position**
 - **From:** Admin UI
 - **Body:**
   ```json
   {
-    "musicbrainzId": "...",
+    "artist": "Radiohead",
+    "album": "OK Computer",
     "year": 1997,
     "genre": "Alternative Rock"
   }
   ```
-- **Side effects:**
-  - Fetch full metadata from MusicBrainz
-  - Download cover art
-  - Save tracks to database
 
 ---
 
 ### Control Commands
 
-**POST /api/control/play/:disc/:track?**
-- **Body:** `{disc: 73, track: 1}` (track optional)
-- **Response:** `{success: true, queued: true}`
+**POST /api/command**
+- **Body:** `{command: "play", player: 1, disc: 73, track: 1}`
+- Commands: `play`, `pause`, `stop`, `next`, `previous`
+- `player`, `disc`, `track` optional (for simple play/pause/stop)
+- **Response:** `{id: "cmd-...", command: "play", player: 1, disc: 73, track: 1}`
 - **Side effects:**
-  - Queue command for ESP32
+  - Queue command in `command_queue` table
   - ESP32 polls and receives command
   - ESP32 sends S-Link TX
-
-**POST /api/control/pause**
-**POST /api/control/stop**
-**POST /api/control/next**
-**POST /api/control/previous**
 
 ---
 
@@ -422,10 +441,11 @@ CREATE INDEX idx_tracks_disc ON tracks(disc_position);
 - **Response:**
   ```json
   {
-    "command": "play",
+    "action": "play",
+    "player": 1,
     "disc": 73,
     "track": 1,
-    "id": "cmd-123"  // For acknowledgment
+    "id": "cmd-123"
   }
   ```
   Or `{}` if no pending commands
@@ -439,17 +459,16 @@ CREATE INDEX idx_tracks_disc ON tracks(disc_position);
 
 ### MusicBrainz Integration
 
-**GET /api/search/musicbrainz?q=artist+album**
-- **From:** Admin UI
-- **Response:** Proxied MusicBrainz search results
-
-**POST /api/enrich/:position**
-- **From:** Admin UI (after searching MusicBrainz)
-- **Body:** `{musicbrainzId: "..."}`
+**POST /api/enrich/:player/:position**
+- **From:** Admin UI or manual trigger
+- **Body:** `{}` or `{releaseId: "mbid-..."}` to specify exact release
 - **Side effects:**
-  - Fetch metadata
-  - Download cover art
-  - Save tracks
+  - Search MusicBrainz by artist + album
+  - Fetch year, track listing, duration
+  - Download cover art from Cover Art Archive
+  - Save to database
+
+**Note:** Enrichment happens automatically on first access via `GET /api/discs/:player/:position` if metadata is missing.
 
 ---
 
@@ -465,6 +484,7 @@ CREATE INDEX idx_tracks_disc ON tracks(disc_position);
   {
     "event": "state",
     "data": {
+      "player": 1,
       "disc": 42,
       "track": 5,
       "state": "play",
@@ -478,6 +498,7 @@ CREATE INDEX idx_tracks_disc ON tracks(disc_position);
   {
     "event": "metadata_updated",
     "data": {
+      "player": 1,
       "position": 42,
       "artist": "Radiohead",
       "album": "OK Computer"
