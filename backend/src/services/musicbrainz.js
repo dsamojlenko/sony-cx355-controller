@@ -9,8 +9,8 @@ class MusicBrainzService {
   constructor() {
     this.baseURL = 'https://musicbrainz.org/ws/2';
     this.coverArtURL = 'https://coverartarchive.org';
-    this.userAgent = 'CDJukebox/1.0.0 (https://github.com/yourrepo)'; // Update with your info
-    this.rateLimit = 1000; // 1 request per second per MusicBrainz guidelines
+    this.userAgent = 'CDJukebox/1.0.0 (https://github.com/dsamojlenko/sony-cx355-display)';
+    this.rateLimitMs = 1100; // 1 request per second per MusicBrainz guidelines (with buffer)
     this.lastRequest = 0;
     this.coverDir = path.join(__dirname, '../../public/covers');
 
@@ -23,13 +23,13 @@ class MusicBrainzService {
   /**
    * Rate limiting to respect MusicBrainz API guidelines
    */
-  async rateLimit() {
+  async _waitForRateLimit() {
     const now = Date.now();
     const timeSinceLastRequest = now - this.lastRequest;
 
-    if (timeSinceLastRequest < this.rateLimit) {
+    if (timeSinceLastRequest < this.rateLimitMs) {
       await new Promise(resolve =>
-        setTimeout(resolve, this.rateLimit - timeSinceLastRequest)
+        setTimeout(resolve, this.rateLimitMs - timeSinceLastRequest)
       );
     }
 
@@ -40,7 +40,7 @@ class MusicBrainzService {
    * Search for releases by artist and album
    */
   async searchRelease(artist, album) {
-    await this.rateLimit();
+    await this._waitForRateLimit();
 
     try {
       const query = `artist:"${artist}" AND release:"${album}"`;
@@ -66,7 +66,7 @@ class MusicBrainzService {
    * Get detailed release information including tracks
    */
   async getRelease(releaseId) {
-    await this.rateLimit();
+    await this._waitForRateLimit();
 
     try {
       const response = await axios.get(`${this.baseURL}/release/${releaseId}`, {
@@ -115,15 +115,19 @@ class MusicBrainzService {
 
   /**
    * Download cover art for a release
+   * @param {string} releaseId - MusicBrainz release ID
+   * @param {number} player - Player number (1 or 2)
+   * @param {number} position - Disc position (1-300)
    */
-  async downloadCoverArt(releaseId, discPosition) {
+  async downloadCoverArt(releaseId, player, position) {
     try {
-      const coverPath = path.join(this.coverDir, `${discPosition}.jpg`);
+      const filename = `p${player}-${position}.jpg`;
+      const coverPath = path.join(this.coverDir, filename);
 
       // Check if cover already exists
       if (fs.existsSync(coverPath)) {
-        console.log(`Cover art already exists for disc ${discPosition}`);
-        return `/covers/${discPosition}.jpg`;
+        console.log(`Cover art already exists for P${player}-${position}`);
+        return `/covers/${filename}`;
       }
 
       // Fetch cover art from Cover Art Archive
@@ -137,9 +141,9 @@ class MusicBrainzService {
 
       // Save to file
       fs.writeFileSync(coverPath, response.data);
-      console.log(`✓ Downloaded cover art for disc ${discPosition}`);
+      console.log(`✓ Downloaded cover art for P${player}-${position}`);
 
-      return `/covers/${discPosition}.jpg`;
+      return `/covers/${filename}`;
     } catch (error) {
       if (error.response && error.response.status === 404) {
         console.warn(`No cover art available for release ${releaseId}`);
@@ -153,18 +157,19 @@ class MusicBrainzService {
   /**
    * Enrich disc with MusicBrainz metadata
    *
-   * @param {number} discPosition - Disc position (1-300)
+   * @param {number} player - Player number (1 or 2)
+   * @param {number} position - Disc position (1-300)
    * @param {string} artist - Artist name
    * @param {string} album - Album name
    * @param {string} releaseId - Optional: specific MusicBrainz release ID
    */
-  async enrichDisc(discPosition, artist, album, releaseId = null) {
+  async enrichDisc(player, position, artist, album, releaseId = null) {
     try {
       let mbid = releaseId;
 
       // If no release ID provided, search for it
       if (!mbid) {
-        console.log(`Searching MusicBrainz for: ${artist} - ${album}`);
+        console.log(`[MusicBrainz] Searching for: ${artist} - ${album}`);
         const results = await this.searchRelease(artist, album);
 
         if (results.length === 0) {
@@ -173,25 +178,32 @@ class MusicBrainzService {
 
         // Use first result (could implement better matching logic)
         mbid = results[0].id;
-        console.log(`Found release: ${results[0].title} (${results[0].id})`);
+        console.log(`[MusicBrainz] Found release: ${results[0].title} (${results[0].id})`);
       }
 
       // Get detailed release information
-      console.log(`Fetching release details for ${mbid}...`);
+      console.log(`[MusicBrainz] Fetching release details for ${mbid}...`);
       const metadata = await this.getRelease(mbid);
 
       // Download cover art
-      console.log(`Downloading cover art...`);
-      const coverArtPath = await this.downloadCoverArt(mbid, discPosition);
+      console.log(`[MusicBrainz] Downloading cover art...`);
+      const coverArtPath = await this.downloadCoverArt(mbid, player, position);
 
       return {
         ...metadata,
         cover_art_path: coverArtPath
       };
     } catch (error) {
-      console.error(`Failed to enrich disc ${discPosition}:`, error.message);
+      console.error(`[MusicBrainz] Failed to enrich P${player}-${position}:`, error.message);
       throw error;
     }
+  }
+
+  /**
+   * Check if a disc needs enrichment (missing metadata)
+   */
+  needsEnrichment(disc) {
+    return !disc.musicbrainz_id || !disc.track_count || disc.track_count === 0;
   }
 
   /**

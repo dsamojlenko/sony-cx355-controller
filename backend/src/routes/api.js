@@ -33,15 +33,41 @@ router.get('/discs', (req, res) => {
 /**
  * GET /api/discs/:player/:position
  * Get single disc with tracks
+ * Auto-enriches with MusicBrainz data if not already enriched
  */
-router.get('/discs/:player/:position', (req, res) => {
+router.get('/discs/:player/:position', async (req, res) => {
   try {
     const player = parseInt(req.params.player);
     const position = parseInt(req.params.position);
-    const disc = db.getDisc(player, position);
+    let disc = db.getDisc(player, position);
 
     if (!disc) {
       return res.status(404).json({ error: 'Disc not found' });
+    }
+
+    // Auto-enrich if needed (no musicbrainz data yet)
+    if (musicbrainz.needsEnrichment(disc)) {
+      try {
+        console.log(`[API] Auto-enriching P${player}-${position}: ${disc.artist} - ${disc.album}`);
+        const metadata = await musicbrainz.enrichDisc(player, position, disc.artist, disc.album);
+
+        // Update database
+        db.upsertDisc(player, position, { ...disc, ...metadata });
+        if (metadata.tracks && metadata.tracks.length > 0) {
+          db.setTracks(disc.id, metadata.tracks);
+        }
+
+        // Re-fetch with updated data
+        disc = db.getDisc(player, position);
+
+        // Broadcast update to WebSocket clients
+        if (req.app.get('io')) {
+          req.app.get('io').emit('metadata_updated', { player, position });
+        }
+      } catch (enrichError) {
+        // Log but don't fail - return disc without enrichment
+        console.error(`[API] Auto-enrich failed for P${player}-${position}:`, enrichError.message);
+      }
     }
 
     res.json(disc);
@@ -273,6 +299,7 @@ router.post('/enrich/:player/:position', async (req, res) => {
 
     // Enrich with MusicBrainz
     const metadata = await musicbrainz.enrichDisc(
+      player,
       position,
       disc.artist,
       disc.album,
