@@ -1,12 +1,17 @@
 #include <Arduino.h>
 #include "SlinkDecoder.h"
 #include "SlinkTx.h"
+#include "BackendClient.h"
 
 const int SLINK_RX_PIN = 34;
 const int SLINK_TX_PIN = 25;
 
 SlinkDecoder slink(SLINK_RX_PIN);
 SlinkTx slinkTx(SLINK_TX_PIN);
+BackendClient backend;
+
+// Track current state for backend updates
+SlinkTrackStatus currentState;
 
 // simple callback: prints a concise "Now playing" line when disc/track changes
 void onStatus(const SlinkTrackStatus& st) {
@@ -23,6 +28,19 @@ void onStatus(const SlinkTrackStatus& st) {
     Serial.print(F(" TrackIdx="));
     Serial.print(st.trackIndex);
     Serial.println(F(")"));
+
+    // Update current state for backend
+    currentState = st;
+
+    // Send to backend
+    if (backend.isBackendConnected()) {
+        PlayerState ps;
+        ps.player = st.player;
+        ps.disc = st.discNumber;
+        ps.track = st.trackNumber;
+        ps.state = st.playing ? "play" : (st.paused ? "pause" : "stop");
+        backend.sendState(ps);
+    }
 }
 
 // optional: react to transport codes
@@ -318,6 +336,39 @@ void handleSerialCommand() {
     }
 }
 
+// Process commands received from backend
+void processBackendCommand() {
+    if (!backend.hasCommand()) return;
+
+    BackendCommand cmd = backend.getCommand();
+    if (!cmd.valid) return;
+
+    Serial.print(F("[Backend] Executing: "));
+    Serial.println(cmd.action);
+
+    if (strcmp(cmd.action, "play") == 0) {
+        if (cmd.player > 0 && cmd.disc > 0) {
+            // Play specific disc/track on specific player
+            slinkTx.playDisc(cmd.player, cmd.disc, cmd.track > 0 ? cmd.track : 1);
+        } else {
+            slinkTx.play();
+        }
+    } else if (strcmp(cmd.action, "pause") == 0) {
+        slinkTx.pause();
+    } else if (strcmp(cmd.action, "stop") == 0) {
+        slinkTx.stop();
+    } else if (strcmp(cmd.action, "next") == 0) {
+        slinkTx.nextTrack();
+    } else if (strcmp(cmd.action, "previous") == 0) {
+        slinkTx.prevTrack();
+    }
+
+    // Acknowledge the command
+    if (cmd.id[0] != '\0') {
+        backend.acknowledgeCommand(cmd.id);
+    }
+}
+
 void setup() {
     Serial.begin(115200);
     delay(500);
@@ -336,10 +387,24 @@ void setup() {
 
     slinkTx.begin();
 
+    // Connect to WiFi and find backend
+    Serial.println(F("\n--- WiFi Setup ---"));
+    if (backend.begin()) {
+        if (backend.isBackendConnected()) {
+            Serial.print(F("[Backend] Connected to: "));
+            Serial.print(backend.getBackendHost());
+            Serial.print(F(":"));
+            Serial.println(backend.getBackendPort());
+        }
+    }
+    Serial.println();
+
     printHelp();
 }
 
 void loop() {
     slink.loop();
     handleSerialCommand();
+    backend.loop();
+    processBackendCommand();
 }

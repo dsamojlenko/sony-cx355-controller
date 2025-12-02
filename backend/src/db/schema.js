@@ -34,9 +34,13 @@ class DatabaseSchema {
    */
   createTables() {
     // Discs table - stores CD metadata
+    // player: 1 or 2 (physical player unit)
+    // position: 1-300 (slot number within that player)
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS discs (
-        position INTEGER PRIMARY KEY,
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        player INTEGER NOT NULL DEFAULT 1 CHECK(player IN (1, 2)),
+        position INTEGER NOT NULL CHECK(position >= 1 AND position <= 300),
         artist TEXT NOT NULL,
         album TEXT NOT NULL,
         musicbrainz_id TEXT,
@@ -48,7 +52,8 @@ class DatabaseSchema {
         last_played DATETIME,
         play_count INTEGER DEFAULT 0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(player, position)
       );
     `);
 
@@ -56,12 +61,12 @@ class DatabaseSchema {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS tracks (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        disc_position INTEGER NOT NULL,
+        disc_id INTEGER NOT NULL,
         track_number INTEGER NOT NULL,
         title TEXT NOT NULL,
         duration_seconds INTEGER,
-        FOREIGN KEY (disc_position) REFERENCES discs(position) ON DELETE CASCADE,
-        UNIQUE(disc_position, track_number)
+        FOREIGN KEY (disc_id) REFERENCES discs(id) ON DELETE CASCADE,
+        UNIQUE(disc_id, track_number)
       );
     `);
 
@@ -69,11 +74,11 @@ class DatabaseSchema {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS playback_state (
         id INTEGER PRIMARY KEY CHECK (id = 1),
+        current_player INTEGER CHECK(current_player IN (1, 2)),
         current_disc INTEGER,
         current_track INTEGER,
         state TEXT CHECK(state IN ('play', 'pause', 'stop')) DEFAULT 'stop',
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (current_disc) REFERENCES discs(position)
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
     `);
 
@@ -82,6 +87,7 @@ class DatabaseSchema {
       CREATE TABLE IF NOT EXISTS command_queue (
         id TEXT PRIMARY KEY,
         command TEXT NOT NULL,
+        player INTEGER,
         disc INTEGER,
         track INTEGER,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -91,10 +97,11 @@ class DatabaseSchema {
 
     // Create indexes for better query performance
     this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_discs_player ON discs(player);
       CREATE INDEX IF NOT EXISTS idx_discs_artist ON discs(artist);
       CREATE INDEX IF NOT EXISTS idx_discs_album ON discs(album);
       CREATE INDEX IF NOT EXISTS idx_discs_last_played ON discs(last_played DESC);
-      CREATE INDEX IF NOT EXISTS idx_tracks_disc ON tracks(disc_position);
+      CREATE INDEX IF NOT EXISTS idx_tracks_disc ON tracks(disc_id);
       CREATE INDEX IF NOT EXISTS idx_command_queue_ack ON command_queue(acknowledged);
     `);
 

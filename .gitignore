@@ -35,6 +35,9 @@ firmware.bin
 bootloader.bin
 partitions.bin
 
+# Firmware secrets (WiFi credentials)
+firmware/include/secrets.h
+
 # Backend
 backend/node_modules/
 backend/data/

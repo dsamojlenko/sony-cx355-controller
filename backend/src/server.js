@@ -3,6 +3,8 @@ const http = require('http');
 const socketIo = require('socket.io');
 const cors = require('cors');
 const path = require('path');
+const os = require('os');
+const Bonjour = require('bonjour-service').Bonjour;
 const apiRoutes = require('./routes/api');
 
 const app = express();
@@ -15,6 +17,9 @@ const io = socketIo(server, {
 });
 
 const PORT = process.env.PORT || 3000;
+
+// mDNS service advertisement
+const bonjour = new Bonjour();
 
 // Middleware
 app.use(cors());
@@ -65,15 +70,40 @@ setInterval(() => {
 
 // Start server
 server.listen(PORT, () => {
+  // Advertise via mDNS so ESP32 can find us
+  const mdnsService = bonjour.publish({
+    name: 'CD Jukebox Backend',
+    type: 'cdjukebox',
+    port: PORT,
+    host: 'cdjukebox.local'
+  });
+
+  // Get local IP addresses for display
+  const interfaces = os.networkInterfaces();
+  const addresses = [];
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        addresses.push(`${iface.address} (${name})`);
+      }
+    }
+  }
+
   console.log(`
 ╔═══════════════════════════════════════════╗
-║   🎵 CD Jukebox Backend Server Running   ║
+║   CD Jukebox Backend Server Running       ║
 ╚═══════════════════════════════════════════╝
 
   Port:        ${PORT}
   API:         http://localhost:${PORT}/api
   WebSocket:   ws://localhost:${PORT}
   Health:      http://localhost:${PORT}/health
+
+  mDNS:        cdjukebox.local:${PORT}
+  Service:     _cdjukebox._tcp
+
+  Local IPs:
+${addresses.map(a => `    - ${a}`).join('\n')}
 
   Endpoints:
   - GET    /api/discs
@@ -92,31 +122,28 @@ server.listen(PORT, () => {
   - POST   /api/enrich/:position
   - GET    /api/stats
 
-  Next steps:
-  1. Run: npm run import
-  2. Open: http://localhost:${PORT}
+  ESP32 can discover this server via:
+    - mDNS service: _cdjukebox._tcp
+    - mDNS hostname: cdjukebox.local
 
 ╔═══════════════════════════════════════════╗
-║            Server is ready! 🚀            ║
+║            Server is ready!               ║
 ╚═══════════════════════════════════════════╝
   `);
 });
 
 // Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received, closing server...');
+function shutdown(signal) {
+  console.log(`\n${signal} received, closing server...`);
+  bonjour.unpublishAll();
+  bonjour.destroy();
   server.close(() => {
     console.log('Server closed');
     process.exit(0);
   });
-});
+}
 
-process.on('SIGINT', () => {
-  console.log('\nSIGINT received, closing server...');
-  server.close(() => {
-    console.log('Server closed');
-    process.exit(0);
-  });
-});
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
 
 module.exports = { app, server, io };

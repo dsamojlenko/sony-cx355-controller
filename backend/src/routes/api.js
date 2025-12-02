@@ -9,15 +9,17 @@ const musicbrainz = new MusicBrainzService();
 /**
  * GET /api/discs
  * List all discs with optional search and pagination
+ * Query params: player (1 or 2), search, sort, limit, offset
  */
 router.get('/discs', (req, res) => {
   try {
-    const { search, sort, limit, offset } = req.query;
+    const { player, search, sort, limit, offset } = req.query;
 
     const result = db.getDiscs({
+      player: player ? parseInt(player) : null,
       search,
       sort,
-      limit: limit ? parseInt(limit) : 300,
+      limit: limit ? parseInt(limit) : 600,
       offset: offset ? parseInt(offset) : 0
     });
 
@@ -29,13 +31,14 @@ router.get('/discs', (req, res) => {
 });
 
 /**
- * GET /api/discs/:position
+ * GET /api/discs/:player/:position
  * Get single disc with tracks
  */
-router.get('/discs/:position', (req, res) => {
+router.get('/discs/:player/:position', (req, res) => {
   try {
+    const player = parseInt(req.params.player);
     const position = parseInt(req.params.position);
-    const disc = db.getDisc(position);
+    const disc = db.getDisc(player, position);
 
     if (!disc) {
       return res.status(404).json({ error: 'Disc not found' });
@@ -49,22 +52,26 @@ router.get('/discs/:position', (req, res) => {
 });
 
 /**
- * POST /api/discs/:position
+ * POST /api/discs/:player/:position
  * Update disc metadata
  */
-router.post('/discs/:position', (req, res) => {
+router.post('/discs/:player/:position', (req, res) => {
   try {
+    const player = parseInt(req.params.player);
     const position = parseInt(req.params.position);
     const data = req.body;
 
-    db.upsertDisc(position, data);
+    db.upsertDisc(player, position, data);
+
+    // Get disc to obtain id for tracks
+    const disc = db.getDisc(player, position);
 
     // If tracks provided, update them
-    if (data.tracks && Array.isArray(data.tracks)) {
-      db.setTracks(position, data.tracks);
+    if (data.tracks && Array.isArray(data.tracks) && disc) {
+      db.setTracks(disc.id, data.tracks);
     }
 
-    const updated = db.getDisc(position);
+    const updated = db.getDisc(player, position);
     res.json(updated);
   } catch (error) {
     console.error('Error updating disc:', error);
@@ -92,13 +99,13 @@ router.get('/current', (req, res) => {
  */
 router.post('/state', (req, res) => {
   try {
-    const { disc, track, state } = req.body;
+    const { player, disc, track, state } = req.body;
 
-    if (!disc || !track || !state) {
-      return res.status(400).json({ error: 'Missing required fields' });
+    if (!player || !disc || !track || !state) {
+      return res.status(400).json({ error: 'Missing required fields (player, disc, track, state)' });
     }
 
-    db.updatePlaybackState(disc, track, state);
+    db.updatePlaybackState(player, disc, track, state);
 
     // Broadcast to WebSocket clients
     if (req.app.get('io')) {
@@ -119,13 +126,13 @@ router.post('/state', (req, res) => {
  */
 router.post('/control/play', (req, res) => {
   try {
-    const { disc, track } = req.body;
+    const { player, disc, track } = req.body;
 
-    if (!disc) {
-      return res.status(400).json({ error: 'Disc number required' });
+    if (!player || !disc) {
+      return res.status(400).json({ error: 'Player and disc number required' });
     }
 
-    const cmd = db.queueCommand('play', disc, track || 1);
+    const cmd = db.queueCommand('play', player, disc, track || 1);
     res.json({ success: true, queued: true, commandId: cmd.id });
   } catch (error) {
     console.error('Error queueing play command:', error);
@@ -249,16 +256,17 @@ router.get('/search/musicbrainz', async (req, res) => {
 });
 
 /**
- * POST /api/enrich/:position
+ * POST /api/enrich/:player/:position
  * Enrich disc with MusicBrainz data
  */
-router.post('/enrich/:position', async (req, res) => {
+router.post('/enrich/:player/:position', async (req, res) => {
   try {
+    const player = parseInt(req.params.player);
     const position = parseInt(req.params.position);
     const { musicbrainzId } = req.body;
 
     // Get current disc info
-    const disc = db.getDisc(position);
+    const disc = db.getDisc(player, position);
     if (!disc) {
       return res.status(404).json({ error: 'Disc not found' });
     }
@@ -272,17 +280,17 @@ router.post('/enrich/:position', async (req, res) => {
     );
 
     // Update database
-    db.upsertDisc(position, metadata);
+    db.upsertDisc(player, position, metadata);
     if (metadata.tracks) {
-      db.setTracks(position, metadata.tracks);
+      db.setTracks(disc.id, metadata.tracks);
     }
 
     // Broadcast update to WebSocket clients
     if (req.app.get('io')) {
-      req.app.get('io').emit('metadata_updated', { position, metadata });
+      req.app.get('io').emit('metadata_updated', { player, position, metadata });
     }
 
-    const updated = db.getDisc(position);
+    const updated = db.getDisc(player, position);
     res.json(updated);
   } catch (error) {
     console.error('Enrichment error:', error);
