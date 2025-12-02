@@ -48,10 +48,6 @@ private:
     uint8_t             _lastSig[8];
     bool                _haveLastSig = false;
 
-    // last logged time (to avoid duplicate logs)
-    int                 _lastLoggedMinutes = -1;
-    int                 _lastLoggedSeconds = -1;
-
     // state
     SlinkTrackStatus    _state;
 

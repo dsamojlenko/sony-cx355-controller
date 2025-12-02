@@ -372,22 +372,14 @@ void SlinkDecoder::_handleTimeStatusFrame(const uint8_t* bytes, int len) {
     int minOnes = _decodeTimeValue(minOnesCode);
     int minutes = minTens * 10 + minOnes;
 
-    // Round to 10-second intervals for logging
-    int logSeconds = (seconds / 10) * 10;
+    // Suppress unused variable warnings - time data decoded but not logged
+    (void)player;
+    (void)minutes;
+    (void)seconds;
 
-    // Only log when the time actually changes (avoids burst of identical logs)
-    if (minutes != _lastLoggedMinutes || logSeconds != _lastLoggedSeconds) {
-        _lastLoggedMinutes = minutes;
-        _lastLoggedSeconds = logSeconds;
-
-        Serial.print(F("[TIME] Player "));
-        Serial.print(player);
-        Serial.print(F(" "));
-        Serial.print(minutes);
-        Serial.print(F(":"));
-        if (logSeconds < 10) Serial.print('0');
-        Serial.println(logSeconds);
-    }
+    // Time frames are only available from Command Mode 3 device when playing.
+    // Not useful for display since we can't get time from Mode 1 player.
+    // Data is decoded above if needed in the future.
 }
 
 // Extended status frames: 14 bytes, 41 XX 15 00 ...
@@ -419,50 +411,23 @@ void SlinkDecoder::_handleExtendedStatusFrame(const uint8_t* bytes, int len) {
         highRange = true;
     }
 
-    // Log the frame for analysis
-    Serial.print(F("[EXT14] Dev=0x"));
-    if (dev < 0x10) Serial.print('0');
-    Serial.print(dev, HEX);
-    Serial.print(F(" Player="));
-    Serial.print(player);
-    Serial.print(F(" Data: "));
-    for (int i = 4; i < len; ++i) {
-        if (bytes[i] < 0x10) Serial.print('0');
-        Serial.print(bytes[i], HEX);
-        if (i < len - 1) Serial.print(' ');
-    }
-    Serial.println();
+    // Suppress unused variable warnings - data decoded but not logged
+    (void)player;
+    (void)highRange;
 
-    // Byte analysis for disc 201 on Player 2:
-    // Positions: [4]00 [5]00 [6]50 [7]00 [8]00 [9]00 [10]00 [11]01 [12]00 [13]00
-    // The 0x01 at position 11 could be disc 201 (201-200=1 for high range)
-    // The 0x50 at position 6 is interesting - could be track or time related
-
-    // For high-range devices (201-300), disc number = byte[11] + 200
-    // For low-range devices (1-200), encoding TBD - need test data
-    // NOTE: These frames indicate disc is LOADED, not necessarily playing
-    // Player 2 sends these even when idle with a disc loaded
-    if (player > 0 && highRange) {
-        int discNumber = bytes[11] + 200;
-        if (discNumber >= 201 && discNumber <= 300) {
-            Serial.print(F("[EXT14] Player "));
-            Serial.print(player);
-            Serial.print(F(" has disc "));
-            Serial.print(discNumber);
-            Serial.println(F(" loaded"));
-        }
-    }
+    // EXT14 frames only come from Command Mode 3 device and show its loaded disc.
+    // Not useful for system-wide display. Data is decoded above if needed.
 }
 
 // Heartbeat frames: 41 04 00 55
-// These appear periodically (every few seconds) during playback
+// These appear periodically (every few seconds) from Command Mode 3 device
 void SlinkDecoder::_handleHeartbeatFrame(const uint8_t* bytes, int len) {
     if (len != 4) return;
     if (bytes[0] != 0x41 || bytes[1] != 0x04 || bytes[2] != 0x00 || bytes[3] != 0x55) return;
 
-    // This is a heartbeat - indicates player is active
-    // We could use this to detect if player is on but not necessarily playing
-    Serial.println(F("[HEARTBEAT] 41 04 00 55"));
+    // Heartbeat only comes from Command Mode 3 device.
+    // Could be used to detect if that player is powered on.
+    // Not logging since it's frequent and not useful for display.
 }
 
 // Log all frames that don't match known patterns

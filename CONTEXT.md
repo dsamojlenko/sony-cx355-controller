@@ -229,11 +229,14 @@ BCD-like; reliable.
 - 0x40 / 0x14 → loading or transitional
 
 ## 5. Known Limitations
+- **No status request command exists**: Scanned command codes 0x02-0x5F without finding any
+  command that triggers a status response. The device only broadcasts status on state changes.
+  Workaround: Track state from received frames; on startup, assume unknown state until first
+  status frame is received (or trigger a state change like pause/unpause).
 - 14-byte extended status frames: disc decoding works for high-range (201-300), low-range encoding TBD
 - RX decoding could be rewritten using ESP32 RMT for robustness
 - Command Mode 2 high-range device code (0x46) is assumed but not confirmed
 - TX timing uses simple delays; could be improved with interrupt-based approach
-- No known status request command; initial state must be detected from periodic frames
 - Time/heartbeat/EXT14 frames only come from Command Mode 3 device; if no device is in
   Mode 3, these frames won't be available on the bus
 

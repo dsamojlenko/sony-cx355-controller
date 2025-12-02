@@ -60,6 +60,7 @@ void printHelp() {
     Serial.println(F("  2d<num>       - Play disc on Player 2 (e.g., 2d50)"));
     Serial.println(F("  x<DD><CC>[<P1><P2>] - Raw hex: dev, cmd, params (e.g., x9050FE01)"));
     Serial.println(F("  scan<HH>-<HH> - Scan device addresses with PLAY cmd (e.g., scan90-9F)"));
+    Serial.println(F("  cmdscan<DD>,<HH>-<HH> - Scan cmd codes to device (e.g., cmdscan90,20-2F)"));
     Serial.println(F("  h  - Show this help"));
     Serial.println();
 }
@@ -122,6 +123,66 @@ void handleSerialCommand() {
                         delay(500);  // Wait between attempts to see response
                     }
                     Serial.println(F("[SCAN] Done"));
+                    cmdLen = 0;
+                    return;
+                }
+
+                // Check for cmdscan command: cmdscan<dev>,<start>-<end>
+                if (strncmp(&cmdBuf[idx], "cmdscan", 7) == 0) {
+                    int i = idx + 7;
+
+                    int devAddr = parseHexByte(&cmdBuf[i]);
+                    if (devAddr < 0) {
+                        Serial.println(F("[ERR] Invalid device address"));
+                        cmdLen = 0;
+                        return;
+                    }
+                    i += 2;
+                    if (cmdBuf[i] != ',') {
+                        Serial.println(F("[ERR] Expected ',' after device address"));
+                        cmdLen = 0;
+                        return;
+                    }
+                    i++;
+                    int startCmd = parseHexByte(&cmdBuf[i]);
+                    if (startCmd < 0) {
+                        Serial.println(F("[ERR] Invalid start command"));
+                        cmdLen = 0;
+                        return;
+                    }
+                    i += 2;
+                    if (cmdBuf[i] != '-') {
+                        Serial.println(F("[ERR] Expected '-' between command codes"));
+                        cmdLen = 0;
+                        return;
+                    }
+                    i++;
+                    int endCmd = parseHexByte(&cmdBuf[i]);
+                    if (endCmd < 0) {
+                        Serial.println(F("[ERR] Invalid end command"));
+                        cmdLen = 0;
+                        return;
+                    }
+
+                    Serial.print(F("[CMDSCAN] Sending cmds 0x"));
+                    Serial.print(startCmd, HEX);
+                    Serial.print(F(" - 0x"));
+                    Serial.print(endCmd, HEX);
+                    Serial.print(F(" to device 0x"));
+                    Serial.println(devAddr, HEX);
+                    Serial.println(F("Watch for status response frames..."));
+                    Serial.println(F("(2 second delay between commands)"));
+
+                    for (int cmdCode = startCmd; cmdCode <= endCmd; cmdCode++) {
+                        Serial.print(F("  >> 0x"));
+                        Serial.print(devAddr, HEX);
+                        Serial.print(F(" 0x"));
+                        Serial.println(cmdCode, HEX);
+                        slinkTx.sendCommand(devAddr, cmdCode);
+                        // Longer delay to watch for responses
+                        delay(2000);
+                    }
+                    Serial.println(F("[CMDSCAN] Done"));
                     cmdLen = 0;
                     return;
                 }
