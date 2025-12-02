@@ -1,0 +1,27 @@
+{
+  "name": "cd-jukebox-backend",
+  "version": "1.0.0",
+  "description": "Backend server for Sony CX355 CD Jukebox",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "init-db": "node src/db/init.js",
+    "import": "node src/scripts/import-csv.js"
+  },
+  "keywords": ["cd", "jukebox", "musicbrainz"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.6.1",
+    "better-sqlite3": "^9.2.2",
+    "axios": "^1.6.2",
+    "cors": "^2.8.5",
+    "csv-parser": "^3.0.0",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}
