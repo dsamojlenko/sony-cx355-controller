@@ -1,9 +1,12 @@
 #include <Arduino.h>
 #include "SlinkDecoder.h"
+#include "SlinkTx.h"
 
 const int SLINK_RX_PIN = 34;
+const int SLINK_TX_PIN = 25;
 
 SlinkDecoder slink(SLINK_RX_PIN);
+SlinkTx slinkTx(SLINK_TX_PIN);
 
 // simple callback: prints a concise "Now playing" line when disc/track changes
 void onStatus(const SlinkTrackStatus& st) {
@@ -24,10 +27,234 @@ void onStatus(const SlinkTrackStatus& st) {
 
 // optional: react to transport codes
 void onTransport(uint8_t code) {
-    // Already logged by the decoder, but you could:
-    // - Drive LEDs
-    // - Update UI state
-    (void)code; // silence unused warning for now
+    (void)code;
+}
+
+// Parse hex byte from string, returns -1 on error
+int parseHexByte(const char* str) {
+    if (!str[0] || !str[1]) return -1;  // Need at least 2 chars
+
+    int val = 0;
+    for (int i = 0; i < 2; i++) {
+        val <<= 4;
+        char c = str[i];
+        if (c >= '0' && c <= '9') val |= (c - '0');
+        else if (c >= 'a' && c <= 'f') val |= (c - 'a' + 10);
+        else if (c >= 'A' && c <= 'F') val |= (c - 'A' + 10);
+        else return -1;
+    }
+    return val;
+}
+
+void printHelp() {
+    Serial.println(F("=== S-Link TX Commands ==="));
+    Serial.println(F("  p  - Play"));
+    Serial.println(F("  s  - Stop"));
+    Serial.println(F("  a  - Pause (toggle)"));
+    Serial.println(F("  n  - Next track"));
+    Serial.println(F("  b  - Previous track (back)"));
+    Serial.println(F("  +  - Power on"));
+    Serial.println(F("  -  - Power off"));
+    Serial.println(F("  d<num>        - Play disc (e.g., d125)"));
+    Serial.println(F("  d<num>t<num>  - Play disc & track (e.g., d125t5)"));
+    Serial.println(F("  2d<num>       - Play disc on Player 2 (e.g., 2d50)"));
+    Serial.println(F("  x<DD><CC>[<P1><P2>] - Raw hex: dev, cmd, params (e.g., x9050FE01)"));
+    Serial.println(F("  scan<HH>-<HH> - Scan device addresses with PLAY cmd (e.g., scan90-9F)"));
+    Serial.println(F("  h  - Show this help"));
+    Serial.println();
+}
+
+void handleSerialCommand() {
+    static char cmdBuf[32];
+    static int cmdLen = 0;
+
+    while (Serial.available()) {
+        char c = Serial.read();
+        if (c == '\n' || c == '\r') {
+            if (cmdLen > 0) {
+                cmdBuf[cmdLen] = '\0';
+
+                // Parse command
+                int player = 1;
+                int idx = 0;
+
+                // Check for player prefix (e.g., "2d50")
+                if (cmdBuf[0] == '2') {
+                    player = 2;
+                    idx = 1;
+                }
+
+                // Check for multi-character commands first
+                if (strncmp(&cmdBuf[idx], "scan", 4) == 0) {
+                    // Parse scan<start>-<end> e.g., scan90-9F
+                    int i = idx + 4;
+
+                    int startAddr = parseHexByte(&cmdBuf[i]);
+                    if (startAddr < 0) {
+                        Serial.println(F("[ERR] Invalid start address"));
+                        cmdLen = 0;
+                        return;
+                    }
+                    i += 2;
+                    if (cmdBuf[i] != '-') {
+                        Serial.println(F("[ERR] Expected '-' between addresses"));
+                        cmdLen = 0;
+                        return;
+                    }
+                    i++;
+                    int endAddr = parseHexByte(&cmdBuf[i]);
+                    if (endAddr < 0) {
+                        Serial.println(F("[ERR] Invalid end address"));
+                        cmdLen = 0;
+                        return;
+                    }
+
+                    Serial.print(F("[SCAN] Sending PLAY (0x00) to devices 0x"));
+                    Serial.print(startAddr, HEX);
+                    Serial.print(F(" - 0x"));
+                    Serial.println(endAddr, HEX);
+                    Serial.println(F("Watch for player response..."));
+
+                    for (int addr = startAddr; addr <= endAddr; addr++) {
+                        Serial.print(F("  Trying 0x"));
+                        Serial.println(addr, HEX);
+                        slinkTx.sendCommand(addr, SLINK_CMD_PLAY);
+                        delay(500);  // Wait between attempts to see response
+                    }
+                    Serial.println(F("[SCAN] Done"));
+                    cmdLen = 0;
+                    return;
+                }
+
+                char cmd = cmdBuf[idx];
+
+                switch (cmd) {
+                    case 'p':
+                        Serial.println(F("[CMD] Play"));
+                        slinkTx.play();
+                        break;
+                    case 's':
+                        Serial.println(F("[CMD] Stop"));
+                        slinkTx.stop();
+                        break;
+                    case 'a':
+                        Serial.println(F("[CMD] Pause"));
+                        slinkTx.pause();
+                        break;
+                    case 'n':
+                        Serial.println(F("[CMD] Next track"));
+                        slinkTx.nextTrack();
+                        break;
+                    case 'b':
+                        Serial.println(F("[CMD] Previous track"));
+                        slinkTx.prevTrack();
+                        break;
+                    case '+':
+                        Serial.println(F("[CMD] Power on"));
+                        slinkTx.powerOn();
+                        break;
+                    case '-':
+                        Serial.println(F("[CMD] Power off"));
+                        slinkTx.powerOff();
+                        break;
+                    case 'd': {
+                        // Parse disc number and optional track
+                        int disc = 0;
+                        int track = 0;
+                        int i = idx + 1;
+
+                        // Parse disc number
+                        while (cmdBuf[i] >= '0' && cmdBuf[i] <= '9') {
+                            disc = disc * 10 + (cmdBuf[i] - '0');
+                            i++;
+                        }
+
+                        // Check for 't' followed by track number
+                        if (cmdBuf[i] == 't') {
+                            i++;
+                            while (cmdBuf[i] >= '0' && cmdBuf[i] <= '9') {
+                                track = track * 10 + (cmdBuf[i] - '0');
+                                i++;
+                            }
+                        }
+
+                        if (disc > 0) {
+                            Serial.print(F("[CMD] Play Player "));
+                            Serial.print(player);
+                            Serial.print(F(" Disc "));
+                            Serial.print(disc);
+                            if (track > 0) {
+                                Serial.print(F(" Track "));
+                                Serial.print(track);
+                            }
+                            Serial.println();
+                            slinkTx.playDisc(player, disc, track);
+                        } else {
+                            Serial.println(F("[ERR] Invalid disc number"));
+                        }
+                        break;
+                    }
+                    case 'x': {
+                        // Raw hex command: x<dev><cmd>[<p1><p2>]
+                        // e.g., x9050FE01 = dev 0x90, cmd 0x50, p1 0xFE, p2 0x01
+                        int i = idx + 1;
+                        int dev = parseHexByte(&cmdBuf[i]);
+                        if (dev < 0) {
+                            Serial.println(F("[ERR] Invalid device hex"));
+                            break;
+                        }
+                        i += 2;
+                        int cmd = parseHexByte(&cmdBuf[i]);
+                        if (cmd < 0) {
+                            Serial.println(F("[ERR] Invalid command hex"));
+                            break;
+                        }
+                        i += 2;
+
+                        Serial.print(F("[RAW] dev=0x"));
+                        Serial.print(dev, HEX);
+                        Serial.print(F(" cmd=0x"));
+                        Serial.print(cmd, HEX);
+
+                        // Check for optional params
+                        int p1 = parseHexByte(&cmdBuf[i]);
+                        if (p1 >= 0) {
+                            i += 2;
+                            int p2 = parseHexByte(&cmdBuf[i]);
+                            if (p2 >= 0) {
+                                Serial.print(F(" p1=0x"));
+                                Serial.print(p1, HEX);
+                                Serial.print(F(" p2=0x"));
+                                Serial.println(p2, HEX);
+                                slinkTx.sendCommand(dev, cmd, p1, p2);
+                            } else {
+                                Serial.print(F(" p1=0x"));
+                                Serial.println(p1, HEX);
+                                slinkTx.sendCommand(dev, cmd, p1);
+                            }
+                        } else {
+                            Serial.println();
+                            slinkTx.sendCommand(dev, cmd);
+                        }
+                        break;
+                    }
+                    case 'h':
+                    case '?':
+                        printHelp();
+                        break;
+                    default:
+                        Serial.print(F("[ERR] Unknown command: "));
+                        Serial.println(cmdBuf);
+                        printHelp();
+                        break;
+                }
+
+                cmdLen = 0;
+            }
+        } else if (cmdLen < (int)sizeof(cmdBuf) - 1) {
+            cmdBuf[cmdLen++] = c;
+        }
+    }
 }
 
 void setup() {
@@ -35,16 +262,23 @@ void setup() {
     delay(500);
 
     Serial.println();
-    Serial.println(F("=== Sony CX355 display - PlatformIO RX-only ==="));
+    Serial.println(F("=== Sony CX355 S-Link Controller ==="));
     Serial.print(F("RX pin: GPIO "));
-    Serial.println(SLINK_RX_PIN);
+    Serial.print(SLINK_RX_PIN);
+    Serial.print(F("  TX pin: GPIO "));
+    Serial.println(SLINK_TX_PIN);
     Serial.println();
 
     slink.begin();
     slink.onStatus(onStatus);
     slink.onTransport(onTransport);
+
+    slinkTx.begin();
+
+    printHelp();
 }
 
 void loop() {
     slink.loop();
+    handleSerialCommand();
 }

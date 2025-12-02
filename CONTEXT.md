@@ -64,10 +64,32 @@ sony-cx355-display/
 - Handles PLAY/STOP/PAUSE
 
 ### 3.3 TX Module
-Minimal so far; sends:
-- 0x90 0x00 (play)
-- 0x90 0x01 (stop)
-- 0x90 0x25 (status request)
+Sends commands to control the CD changers via S-Link.
+
+Device addresses for TX commands:
+| Player | Discs 1-200 | Discs 201-300 |
+|--------|-------------|---------------|
+| 1      | 0x90        | 0x93          |
+| 2      | 0x92        | 0x95 (unconfirmed) |
+
+Command codes (second byte):
+- 0x00 = Play
+- 0x01 = Stop
+- 0x03 = Pause (toggle)
+- 0x08 = Next track
+- 0x09 = Previous track
+- 0x50 = Play disc/track (followed by disc byte, track byte)
+- 0x2E = Power on
+- 0x2F = Power off
+
+Disc number encoding for TX:
+| Range   | Encoding                    | Example                |
+|---------|-----------------------------|------------------------|
+| 1-99    | Standard BCD                | disc 50 → 0x50         |
+| 100-200 | (disc - 100) + 0x9A         | disc 150 → 0xCC        |
+| 201-300 | Raw byte (disc - 200)       | disc 250 → 0x32 (50)   |
+
+Track encoding: Standard BCD (track 5 → 0x05, track 12 → 0x12)
 
 ## 4. Reverse-Engineering Findings
 
@@ -118,6 +140,7 @@ BCD-like; reliable.
 - Track time not decoded yet
 - RX decoding could be rewritten using ESP32 RMT for robustness
 - Device codes for Player 3+ are unknown (would need hardware to test)
+- TX timing uses simple delays; could be improved with interrupt-based approach
 
 ## 6. Next Steps
 - Modularize firmware
