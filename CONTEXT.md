@@ -8,7 +8,7 @@ This project builds a custom external display system for the Sony CDP-CX355 300-
 - Transport state (Play, Pause, Stop)
 - Eventually CD metadata from a local database
 
-Only Player 1 (the 300-disc unit) is used. Player 2 is disconnected.
+Two CDP-CX355 units are connected (Player 1 and Player 2), each providing 300 disc slots.
 
 ## 2. Hardware Summary
 
@@ -79,10 +79,20 @@ Transport:
 - 41 40 00 40 → transition
 - 41 04 00 55 → transition/noise
 
-Status:
+Status (12-byte extended frame):
 ```
-41 40 11 00 [D1] [D2] [T1] [T2] [X1] [X2] [X3] [X4]
+41 [DEV] 11 00 [D1] [D2] [T1] [T2] [X1] [X2] [X3] [X4]
 ```
+
+Device codes by player and disc range:
+| Player | Discs 1-200 | Discs 201-300 |
+|--------|-------------|---------------|
+| 1      | 0x40        | 0x45          |
+| 2      | 0x44        | 0x51          |
+
+Note: The pattern for additional players is unclear. Player 2's low-range code
+(0x44) is +4 from Player 1 (0x40), but the high-range codes don't follow an
+obvious arithmetic progression.
 
 ### 4.2 Disc Number Encoding (300 discs)
 
@@ -104,10 +114,10 @@ BCD-like; reliable.
 - 0x40 / 0x14 → loading or transitional
 
 ## 5. Known Limitations
-- Player 2 required for proper bus bias (current hardware setup)
 - Extended 14-byte frames not decoded
 - Track time not decoded yet
 - RX decoding could be rewritten using ESP32 RMT for robustness
+- Device codes for Player 3+ are unknown (would need hardware to test)
 
 ## 6. Next Steps
 - Modularize firmware

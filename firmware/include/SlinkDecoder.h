@@ -15,6 +15,7 @@ struct SlinkTrackStatus {
     int      trackIndex = -1;
     int      discNumber = -1;   // 1–300
     int      trackNumber = -1;  // 1–99
+    int      player = 0;        // 1 or 2 (0 = unknown)
 };
 
 typedef void (*SlinkStatusCallback)(const SlinkTrackStatus& status);

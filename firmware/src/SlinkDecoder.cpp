@@ -183,15 +183,30 @@ void SlinkDecoder::_handleTransportFrame(const uint8_t* bytes, int len) {
     }
 }
 
-// Extended status: dev=0x40 (1–200) or 0x45 (201–300)
-// 41 40 11 00 [8 bytes sig]
-// 41 45 11 00 [8 bytes sig]
+// Extended status:
+// Player 1: dev=0x40 (discs 1–200) or 0x45 (discs 201–300)
+// Player 2: dev=0x44 (discs 1–200) or 0x51 (discs 201–300)
+// Frame format: 41 XX 11 00 [8 bytes sig]
 void SlinkDecoder::_handleTrackStatusFrame(const uint8_t* bytes, int len) {
     if (len != 12) return;
     if (bytes[0] != 0x41) return;
     if (bytes[2] != 0x11 || bytes[3] != 0x00) return;
 
-    uint8_t dev = bytes[1]; // 0x40 for disc 1–200, 0x45 for 201–300
+    uint8_t dev = bytes[1];
+
+    // Log unknown device codes to help discover new player/range combinations
+    if (dev != 0x40 && dev != 0x45 && dev != 0x44 && dev != 0x51) {
+        Serial.print(F("[UNKNOWN DEV] 0x"));
+        if (dev < 0x10) Serial.print('0');
+        Serial.print(dev, HEX);
+        Serial.print(F("  Frame: "));
+        for (int i = 0; i < len; ++i) {
+            if (bytes[i] < 0x10) Serial.print('0');
+            Serial.print(bytes[i], HEX);
+            if (i < len - 1) Serial.print(' ');
+        }
+        Serial.println();
+    }
 
     uint8_t sig[8];
     for (int i = 0; i < 8; ++i) {
@@ -223,11 +238,25 @@ void SlinkDecoder::_handleTrackStatusFrame(const uint8_t* bytes, int len) {
 
     int discNumber  = -1;
     int trackNumber = -1;
+    int player = 0;
 
+    // Determine player and decode disc number
     if (discIndex > 0) {
         if (dev == 0x40) {
+            // Player 1, discs 1-200
+            player = 1;
             discNumber = _decodeDiscNumber_1to200_FromIndex(discIndex);
         } else if (dev == 0x45) {
+            // Player 1, discs 201-300
+            player = 1;
+            discNumber = _decodeDiscNumber_201to300_FromIndex(discIndex);
+        } else if (dev == 0x44) {
+            // Player 2, discs 1-200
+            player = 2;
+            discNumber = _decodeDiscNumber_1to200_FromIndex(discIndex);
+        } else if (dev == 0x51) {
+            // Player 2, discs 201-300
+            player = 2;
             discNumber = _decodeDiscNumber_201to300_FromIndex(discIndex);
         }
     }
@@ -236,6 +265,7 @@ void SlinkDecoder::_handleTrackStatusFrame(const uint8_t* bytes, int len) {
     }
 
     _state.haveStatus  = true;
+    _state.player      = player;
     _state.discCode    = discCode;
     _state.trackCode   = trackCode;
     _state.discIndex   = discIndex;
@@ -272,7 +302,9 @@ void SlinkDecoder::_handleTrackStatusFrame(const uint8_t* bytes, int len) {
         Serial.print(F("  TrackIndex="));
         Serial.println(trackIndex);
 
-        Serial.print(F("[DECODE] DiscNumber="));
+        Serial.print(F("[DECODE] Player="));
+        Serial.print(player);
+        Serial.print(F("  DiscNumber="));
         Serial.print(discNumber);
         Serial.print(F("  TrackNumber="));
         Serial.println(trackNumber);

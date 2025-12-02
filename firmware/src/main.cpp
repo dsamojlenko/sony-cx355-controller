@@ -9,7 +9,9 @@ SlinkDecoder slink(SLINK_RX_PIN);
 void onStatus(const SlinkTrackStatus& st) {
     if (!st.haveStatus) return;
 
-    Serial.print(F("[NOW] Disc="));
+    Serial.print(F("[NOW] Player="));
+    Serial.print(st.player);
+    Serial.print(F(" Disc="));
     Serial.print(st.discNumber);
     Serial.print(F(" Track="));
     Serial.print(st.trackNumber);
