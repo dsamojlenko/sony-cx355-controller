@@ -70,7 +70,7 @@ Device addresses for TX commands:
 | Player | Discs 1-200 | Discs 201-300 |
 |--------|-------------|---------------|
 | 1      | 0x90        | 0x93          |
-| 2      | 0x92        | 0x95 (unconfirmed) |
+| 2      | 0x92        | 0x95          |
 
 Command codes (second byte):
 - 0x00 = Play

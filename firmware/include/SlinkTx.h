@@ -8,8 +8,8 @@
 #define SLINK_DEV_CDP1_HI  0x93  // Player 1, discs 201-300
 
 // Player 2
-#define SLINK_DEV_CDP2_LO  0x92  // Player 2, discs 1-200 (discovered via scan)
-#define SLINK_DEV_CDP2_HI  0x95  // Player 2, discs 201-300 (assumed pattern: +3)
+#define SLINK_DEV_CDP2_LO  0x92  // Player 2, discs 1-200
+#define SLINK_DEV_CDP2_HI  0x95  // Player 2, discs 201-300
 
 // Command codes (second byte)
 #define SLINK_CMD_PLAY          0x00
