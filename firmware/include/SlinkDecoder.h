@@ -48,6 +48,10 @@ private:
     uint8_t             _lastSig[8];
     bool                _haveLastSig = false;
 
+    // last logged time (to avoid duplicate logs)
+    int                 _lastLoggedMinutes = -1;
+    int                 _lastLoggedSeconds = -1;
+
     // state
     SlinkTrackStatus    _state;
 
@@ -65,11 +69,15 @@ private:
     void   _handleFrame(const uint8_t* bytes, int len);
     void   _handleTransportFrame(const uint8_t* bytes, int len);
     void   _handleTrackStatusFrame(const uint8_t* bytes, int len);
+    void   _handleTimeStatusFrame(const uint8_t* bytes, int len);
+    void   _handleExtendedStatusFrame(const uint8_t* bytes, int len);
+    void   _handleHeartbeatFrame(const uint8_t* bytes, int len);
     void   _handleOtherFrame(const uint8_t* bytes, int len);
 
     // encoding/decoding helpers
     uint16_t _encodeIndex(uint16_t n);
     int      _decodeIndexFromCode(uint16_t code, uint16_t maxIndex);
+    int      _decodeTimeValue(uint8_t code);
     int      _decodeTrackNumberFromIndex(int idx);
     int      _decodeDiscNumber_1to200_FromIndex(int idx);
     int      _decodeDiscNumber_201to300_FromIndex(int idx);
