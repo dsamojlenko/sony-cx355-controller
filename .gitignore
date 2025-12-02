@@ -34,3 +34,11 @@ venv/
 firmware.bin
 bootloader.bin
 partitions.bin
+
+# Backend
+backend/node_modules/
+backend/data/
+backend/public/covers/*.jpg
+backend/public/covers/*.png
+backend/.env
+backend/npm-debug.log*
