@@ -41,6 +41,15 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// SPA fallback - serve index.html for any unmatched routes
+app.get('*', (req, res, next) => {
+  // Skip API routes and static files
+  if (req.path.startsWith('/api') || req.path.startsWith('/covers') || req.path.startsWith('/socket.io')) {
+    return next();
+  }
+  res.sendFile(path.join(__dirname, '../public/index.html'));
+});
+
 // WebSocket connection handling
 io.on('connection', (socket) => {
   console.log(`WebSocket client connected: ${socket.id}`);
