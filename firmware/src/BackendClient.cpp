@@ -144,6 +144,11 @@ bool BackendClient::_discoverBackend() {
         return true;
     }
 
+    // Get our own IP to validate discovered IPs are on same subnet
+    IPAddress myIP = WiFi.localIP();
+    Serial.print(F("[mDNS] Our IP: "));
+    Serial.println(myIP);
+
     // Try mDNS discovery
     Serial.println(F("[mDNS] Searching for _cdjukebox._tcp service..."));
 
@@ -152,37 +157,56 @@ bool BackendClient::_discoverBackend() {
     if (n > 0) {
         // Use IP address directly (hostname resolution is unreliable)
         IPAddress ip = MDNS.IP(0);
-        snprintf(_backendHost, sizeof(_backendHost), "%d.%d.%d.%d",
-                 ip[0], ip[1], ip[2], ip[3]);
-        _backendPort = MDNS.port(0);
-        _backendFound = true;
 
-        Serial.print(F("[mDNS] Found backend: "));
-        Serial.print(_backendHost);
+        Serial.print(F("[mDNS] Raw result: "));
+        Serial.print(ip);
         Serial.print(F(":"));
-        Serial.println(_backendPort);
+        Serial.println(MDNS.port(0));
 
-        return true;
+        // Validate the IP looks reasonable (same first 3 octets as us, not .0 or .255)
+        if (ip[0] == myIP[0] && ip[1] == myIP[1] && ip[2] == myIP[2] &&
+            ip[3] != 0 && ip[3] != 255) {
+            snprintf(_backendHost, sizeof(_backendHost), "%d.%d.%d.%d",
+                     ip[0], ip[1], ip[2], ip[3]);
+            _backendPort = MDNS.port(0);
+            _backendFound = true;
+
+            Serial.print(F("[mDNS] Found backend: "));
+            Serial.print(_backendHost);
+            Serial.print(F(":"));
+            Serial.println(_backendPort);
+
+            return true;
+        } else {
+            Serial.println(F("[mDNS] Invalid IP returned (wrong subnet or broadcast), ignoring"));
+        }
     }
 
     // Try fallback hostname
     Serial.println(F("[mDNS] Service not found, trying cdjukebox.local..."));
 
-    IPAddress ip;
-    if (MDNS.queryHost("cdjukebox", 2000) != INADDR_NONE) {
-        // Found via hostname
-        ip = MDNS.queryHost("cdjukebox");
-        snprintf(_backendHost, sizeof(_backendHost), "%d.%d.%d.%d",
-                 ip[0], ip[1], ip[2], ip[3]);
-        _backendPort = BACKEND_PORT;
-        _backendFound = true;
+    IPAddress ip = MDNS.queryHost("cdjukebox", 2000);
+    if (ip != INADDR_NONE && ip[0] != 0) {
+        Serial.print(F("[mDNS] Host query result: "));
+        Serial.println(ip);
 
-        Serial.print(F("[mDNS] Found via hostname: "));
-        Serial.print(_backendHost);
-        Serial.print(F(":"));
-        Serial.println(_backendPort);
+        // Validate the IP
+        if (ip[0] == myIP[0] && ip[1] == myIP[1] && ip[2] == myIP[2] &&
+            ip[3] != 0 && ip[3] != 255) {
+            snprintf(_backendHost, sizeof(_backendHost), "%d.%d.%d.%d",
+                     ip[0], ip[1], ip[2], ip[3]);
+            _backendPort = BACKEND_PORT;
+            _backendFound = true;
 
-        return true;
+            Serial.print(F("[mDNS] Found via hostname: "));
+            Serial.print(_backendHost);
+            Serial.print(F(":"));
+            Serial.println(_backendPort);
+
+            return true;
+        } else {
+            Serial.println(F("[mDNS] Invalid IP returned, ignoring"));
+        }
     }
 
     Serial.println(F("[mDNS] Backend not found"));
