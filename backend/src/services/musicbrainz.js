@@ -230,7 +230,9 @@ class MusicBrainzService {
         label: release['label-info'] && release['label-info'][0]
           ? release['label-info'][0].label.name
           : 'Unknown',
-        format
+        format,
+        // Cover Art Archive thumbnail URL - frontend can try to load this
+        coverArtUrl: `https://coverartarchive.org/release/${release.id}/front-250`
       };
     });
   }

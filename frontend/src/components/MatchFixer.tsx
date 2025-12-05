@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useMusicBrainzSearch, useEnrichDisc } from '@/hooks/useMusicBrainz';
+import { getCoverUrl } from '@/lib/utils';
 import {
   Dialog,
   DialogContent,
@@ -30,6 +31,12 @@ function ReleaseCard({
   selected: boolean;
   onSelect: () => void;
 }) {
+  const [coverError, setCoverError] = useState(false);
+
+  const handleCoverError = useCallback(() => {
+    setCoverError(true);
+  }, []);
+
   return (
     <button
       onClick={onSelect}
@@ -39,7 +46,18 @@ function ReleaseCard({
           : 'border-border hover:border-primary/50 hover:bg-accent/50'
       }`}
     >
-      <div className="flex items-start justify-between gap-2">
+      <div className="flex items-start gap-3">
+        {/* Cover Art Thumbnail */}
+        <div className="w-16 h-16 rounded bg-muted shrink-0 overflow-hidden">
+          <img
+            src={coverError ? getCoverUrl(null) : release.coverArtUrl}
+            alt=""
+            className="w-full h-full object-cover"
+            onError={handleCoverError}
+          />
+        </div>
+
+        {/* Info */}
         <div className="flex-1 min-w-0">
           <div className="font-medium truncate">{release.title}</div>
           <div className="text-sm text-muted-foreground truncate">
@@ -68,6 +86,8 @@ function ReleaseCard({
             )}
           </div>
         </div>
+
+        {/* Selected indicator */}
         {selected && <Check className="w-5 h-5 text-primary shrink-0" />}
       </div>
     </button>

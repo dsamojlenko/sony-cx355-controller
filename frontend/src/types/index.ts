@@ -84,4 +84,5 @@ export interface MusicBrainzRelease {
   country: string;
   label: string;
   format: string;
+  coverArtUrl: string;
 }
