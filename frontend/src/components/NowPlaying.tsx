@@ -11,6 +11,11 @@ import {
   Loader2,
 } from 'lucide-react';
 import { getCoverUrl } from '@/lib/utils';
+import type { Disc } from '@/types';
+
+interface NowPlayingProps {
+  onDiscClick?: (disc: Disc) => void;
+}
 
 function formatDuration(seconds?: number): string {
   if (!seconds) return '--:--';
@@ -19,7 +24,7 @@ function formatDuration(seconds?: number): string {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
-export function NowPlaying() {
+export function NowPlaying({ onDiscClick }: NowPlayingProps) {
   const { state, isLoading } = usePlaybackState();
   const controls = useTransportControls();
 
@@ -41,44 +46,68 @@ export function NowPlaying() {
   const isLoadingDisc = state?.state === 'loading';
   const hasDisc = state?.current_disc != null;
 
+  const handleDiscClick = () => {
+    if (hasDisc && state && onDiscClick) {
+      // Create a minimal Disc object from playback state
+      const disc: Disc = {
+        id: 0, // Will be fetched by DiscDetail
+        player: state.current_player as 1 | 2,
+        position: state.current_disc!,
+        artist: state.artist || 'Unknown',
+        album: state.album || 'Unknown',
+        year: state.year,
+        cover_art_path: state.cover_art_path,
+        play_count: 0,
+      };
+      onDiscClick(disc);
+    }
+  };
+
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-card border-t border-border p-4 z-50">
       <div className="max-w-7xl mx-auto flex items-center gap-4">
-        {/* Cover Art */}
-        <div className="w-16 h-16 rounded bg-muted shrink-0 overflow-hidden">
-          <img
-            src={getCoverUrl(state?.cover_art_path)}
-            alt={state?.album || 'Album cover'}
-            className="w-full h-full object-cover"
-          />
-        </div>
+        {/* Cover Art & Track Info - Clickable */}
+        <button
+          onClick={handleDiscClick}
+          disabled={!hasDisc || !onDiscClick}
+          className="flex items-center gap-4 flex-1 min-w-0 text-left hover:bg-accent/30 -m-2 p-2 rounded transition-colors disabled:hover:bg-transparent"
+        >
+          {/* Cover Art */}
+          <div className="w-16 h-16 rounded bg-muted shrink-0 overflow-hidden">
+            <img
+              src={getCoverUrl(state?.cover_art_path)}
+              alt={state?.album || 'Album cover'}
+              className="w-full h-full object-cover"
+            />
+          </div>
 
-        {/* Track Info */}
-        <div className="flex-1 min-w-0">
-          {hasDisc ? (
-            <>
-              <div className="font-medium truncate">
-                {state?.track_title ? (
-                  <>
-                    <span className="text-muted-foreground">{state?.current_track}.</span>{' '}
-                    {state.track_title}
-                  </>
-                ) : (
-                  `Track ${state?.current_track || 1}`
-                )}
-              </div>
-              <div className="text-sm text-muted-foreground truncate">
-                {state?.artist} — {state?.album}
-              </div>
-              <div className="text-xs text-muted-foreground">
-                Player {state?.current_player} · Disc {state?.current_disc}
-                {state?.track_duration ? ` · ${formatDuration(state.track_duration)}` : ''}
-              </div>
-            </>
-          ) : (
-            <div className="text-muted-foreground">No disc playing</div>
-          )}
-        </div>
+          {/* Track Info */}
+          <div className="flex-1 min-w-0">
+            {hasDisc ? (
+              <>
+                <div className="font-medium truncate">
+                  {state?.track_title ? (
+                    <>
+                      <span className="text-muted-foreground">{state?.current_track}.</span>{' '}
+                      {state.track_title}
+                    </>
+                  ) : (
+                    `Track ${state?.current_track || 1}`
+                  )}
+                </div>
+                <div className="text-sm text-muted-foreground truncate">
+                  {state?.artist} — {state?.album}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Player {state?.current_player} · Disc {state?.current_disc}
+                  {state?.track_duration ? ` · ${formatDuration(state.track_duration)}` : ''}
+                </div>
+              </>
+            ) : (
+              <div className="text-muted-foreground">No disc playing</div>
+            )}
+          </div>
+        </button>
 
         {/* Transport Controls */}
         <div className="flex items-center gap-2">

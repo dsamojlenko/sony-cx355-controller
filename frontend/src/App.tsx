@@ -58,7 +58,7 @@ function App() {
       </main>
 
       {/* Now Playing Bar */}
-      <NowPlaying />
+      <NowPlaying onDiscClick={handleDiscSelect} />
 
       {/* Disc Detail Modal */}
       <DiscDetail
