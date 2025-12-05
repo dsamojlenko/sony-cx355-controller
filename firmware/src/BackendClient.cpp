@@ -270,6 +270,7 @@ bool BackendClient::_httpPost(const char* path, const char* json) {
 
     http.begin(url);
     http.addHeader("Content-Type", "application/json");
+    http.setTimeout(10000);  // 10 second timeout
 
     int httpCode = http.POST(json);
     http.end();
@@ -278,7 +279,27 @@ bool BackendClient::_httpPost(const char* path, const char* json) {
         return true;
     } else {
         Serial.print(F("[HTTP] POST failed: "));
-        Serial.println(httpCode);
+        Serial.print(httpCode);
+        // Print human-readable error for negative codes
+        if (httpCode < 0) {
+            Serial.print(F(" ("));
+            switch (httpCode) {
+                case -1: Serial.print(F("CONNECTION_REFUSED")); break;
+                case -2: Serial.print(F("SEND_HEADER_FAILED")); break;
+                case -3: Serial.print(F("SEND_PAYLOAD_FAILED")); break;
+                case -4: Serial.print(F("NOT_CONNECTED")); break;
+                case -5: Serial.print(F("CONNECTION_LOST")); break;
+                case -6: Serial.print(F("NO_STREAM")); break;
+                case -7: Serial.print(F("NO_HTTP_SERVER")); break;
+                case -8: Serial.print(F("TOO_LESS_RAM")); break;
+                case -9: Serial.print(F("ENCODING")); break;
+                case -10: Serial.print(F("STREAM_WRITE")); break;
+                case -11: Serial.print(F("READ_TIMEOUT")); break;
+                default: Serial.print(F("UNKNOWN")); break;
+            }
+            Serial.print(F(")"));
+        }
+        Serial.println();
         return false;
     }
 }
@@ -294,6 +315,7 @@ bool BackendClient::_httpGet(const char* path, char* response, size_t maxLen) {
     snprintf(url, sizeof(url), "http://%s:%d%s", _backendHost, _backendPort, path);
 
     http.begin(url);
+    http.setTimeout(10000);  // 10 second timeout
 
     int httpCode = http.GET();
 
@@ -305,7 +327,26 @@ bool BackendClient::_httpGet(const char* path, char* response, size_t maxLen) {
         return true;
     } else {
         Serial.print(F("[HTTP] GET failed: "));
-        Serial.println(httpCode);
+        Serial.print(httpCode);
+        if (httpCode < 0) {
+            Serial.print(F(" ("));
+            switch (httpCode) {
+                case -1: Serial.print(F("CONNECTION_REFUSED")); break;
+                case -2: Serial.print(F("SEND_HEADER_FAILED")); break;
+                case -3: Serial.print(F("SEND_PAYLOAD_FAILED")); break;
+                case -4: Serial.print(F("NOT_CONNECTED")); break;
+                case -5: Serial.print(F("CONNECTION_LOST")); break;
+                case -6: Serial.print(F("NO_STREAM")); break;
+                case -7: Serial.print(F("NO_HTTP_SERVER")); break;
+                case -8: Serial.print(F("TOO_LESS_RAM")); break;
+                case -9: Serial.print(F("ENCODING")); break;
+                case -10: Serial.print(F("STREAM_WRITE")); break;
+                case -11: Serial.print(F("READ_TIMEOUT")); break;
+                default: Serial.print(F("UNKNOWN")); break;
+            }
+            Serial.print(F(")"));
+        }
+        Serial.println();
         http.end();
         return false;
     }
