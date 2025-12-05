@@ -1,5 +1,6 @@
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { AlertCircle } from 'lucide-react';
 import { getCoverUrl } from '@/lib/utils';
 import type { Disc } from '@/types';
 
@@ -10,6 +11,9 @@ interface DiscCardProps {
 }
 
 export function DiscCard({ disc, onClick, isPlaying }: DiscCardProps) {
+  // Check if disc needs enrichment (missing MusicBrainz data)
+  const needsEnrichment = !disc.musicbrainz_id || !disc.track_count;
+
   return (
     <Card
       className={`cursor-pointer transition-all hover:bg-accent/50 ${
@@ -19,13 +23,21 @@ export function DiscCard({ disc, onClick, isPlaying }: DiscCardProps) {
     >
       <CardContent className="p-3">
         {/* Cover Art */}
-        <div className="aspect-square rounded bg-muted mb-3 overflow-hidden">
+        <div className="aspect-square rounded bg-muted mb-3 overflow-hidden relative">
           <img
             src={getCoverUrl(disc.cover_art_path)}
             alt={`${disc.artist} - ${disc.album}`}
             className="w-full h-full object-cover"
             loading="lazy"
           />
+          {needsEnrichment && (
+            <div
+              className="absolute top-1 right-1 p-1 rounded-full bg-yellow-500/90 text-yellow-950"
+              title="Missing metadata - click to fix"
+            >
+              <AlertCircle className="w-3.5 h-3.5" />
+            </div>
+          )}
         </div>
 
         {/* Info */}

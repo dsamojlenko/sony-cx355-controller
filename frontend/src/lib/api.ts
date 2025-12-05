@@ -6,6 +6,7 @@ import type {
   StatsResponse,
   CommandResponse,
   PlayerFilter,
+  MusicBrainzRelease,
 } from '@/types';
 
 const API_BASE = '/api';
@@ -124,4 +125,13 @@ export async function enrichDisc(
     method: 'POST',
     body: JSON.stringify({ musicbrainzId }),
   });
+}
+
+// MusicBrainz search
+export async function searchMusicBrainz(
+  artist: string,
+  album: string
+): Promise<MusicBrainzRelease[]> {
+  const params = new URLSearchParams({ artist, album });
+  return fetchJson<MusicBrainzRelease[]>(`${API_BASE}/search/musicbrainz?${params}`);
 }

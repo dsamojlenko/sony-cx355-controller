@@ -212,18 +212,27 @@ class MusicBrainzService {
   async getSuggestions(artist, album) {
     const results = await this.searchRelease(artist, album);
 
-    return results.map(release => ({
-      id: release.id,
-      title: release.title,
-      artist: release['artist-credit'] && release['artist-credit'][0]
-        ? release['artist-credit'][0].name
-        : 'Unknown',
-      date: release.date || 'Unknown',
-      country: release.country || 'Unknown',
-      label: release['label-info'] && release['label-info'][0]
-        ? release['label-info'][0].label.name
-        : 'Unknown'
-    }));
+    return results.map(release => {
+      // Extract format from media array (e.g., "CD", "Vinyl", "Digital Media")
+      const formats = release.media
+        ? [...new Set(release.media.map(m => m.format).filter(Boolean))]
+        : [];
+      const format = formats.length > 0 ? formats.join(' + ') : 'Unknown';
+
+      return {
+        id: release.id,
+        title: release.title,
+        artist: release['artist-credit'] && release['artist-credit'][0]
+          ? release['artist-credit'][0].name
+          : 'Unknown',
+        date: release.date || 'Unknown',
+        country: release.country || 'Unknown',
+        label: release['label-info'] && release['label-info'][0]
+          ? release['label-info'][0].label.name
+          : 'Unknown',
+        format
+      };
+    });
   }
 }
 

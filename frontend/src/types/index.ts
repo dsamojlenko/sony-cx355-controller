@@ -75,3 +75,13 @@ export interface PollResponse {
 }
 
 export type PlayerFilter = 'all' | 1 | 2;
+
+export interface MusicBrainzRelease {
+  id: string;
+  title: string;
+  artist: string;
+  date: string;
+  country: string;
+  label: string;
+  format: string;
+}
