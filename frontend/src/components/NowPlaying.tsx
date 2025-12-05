@@ -58,14 +58,21 @@ export function NowPlaying() {
           {hasDisc ? (
             <>
               <div className="font-medium truncate">
-                {state?.track_title || `Track ${state?.current_track || 1}`}
+                {state?.track_title ? (
+                  <>
+                    <span className="text-muted-foreground">{state?.current_track}.</span>{' '}
+                    {state.track_title}
+                  </>
+                ) : (
+                  `Track ${state?.current_track || 1}`
+                )}
               </div>
               <div className="text-sm text-muted-foreground truncate">
                 {state?.artist} — {state?.album}
               </div>
               <div className="text-xs text-muted-foreground">
-                Player {state?.current_player} · Disc {state?.current_disc} ·{' '}
-                {formatDuration(state?.track_duration)}
+                Player {state?.current_player} · Disc {state?.current_disc}
+                {state?.track_duration ? ` · ${formatDuration(state.track_duration)}` : ''}
               </div>
             </>
           ) : (
