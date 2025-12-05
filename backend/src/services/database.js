@@ -16,7 +16,7 @@ class DatabaseService {
     let query = `
       SELECT
         id, player, position, artist, album, year, genre, cover_art_path,
-        track_count, play_count, last_played
+        musicbrainz_id, track_count, play_count, last_played
       FROM discs
       WHERE 1=1
     `;
