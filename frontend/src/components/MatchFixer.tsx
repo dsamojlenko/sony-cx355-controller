@@ -1,5 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useMusicBrainzSearch, useEnrichDisc } from '@/hooks/useMusicBrainz';
+import { lookupMusicBrainzRelease } from '@/lib/api';
 import { getCoverUrl } from '@/lib/utils';
 import {
   Dialog,
@@ -12,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
-import { Search, Check, AlertCircle, Loader2 } from 'lucide-react';
+import { Search, Check, AlertCircle, Loader2, Disc as DiscIcon } from 'lucide-react';
 import type { Disc, MusicBrainzRelease } from '@/types';
 
 interface MatchFixerProps {
@@ -69,6 +70,12 @@ function ReleaseCard({
                 {release.format}
               </Badge>
             )}
+            {release.mediaCount > 1 && (
+              <Badge variant="secondary" className="text-xs flex items-center gap-1">
+                <DiscIcon className="w-3 h-3" />
+                {release.mediaCount} Discs
+              </Badge>
+            )}
             {release.date !== 'Unknown' && (
               <Badge variant="secondary" className="text-xs">
                 {release.date.split('-')[0]}
@@ -99,7 +106,16 @@ export function MatchFixer({ disc, open, onClose, onSuccess }: MatchFixerProps) 
   const [searchAlbum, setSearchAlbum] = useState('');
   const [hasSearched, setHasSearched] = useState(false);
   const [selectedRelease, setSelectedRelease] = useState<MusicBrainzRelease | null>(null);
+  const [selectedMedium, setSelectedMedium] = useState(1);
   const [manualMbid, setManualMbid] = useState('');
+  const [manualLookupResult, setManualLookupResult] = useState<MusicBrainzRelease | null>(null);
+  const [isLookingUp, setIsLookingUp] = useState(false);
+  const [lookupError, setLookupError] = useState<string | null>(null);
+
+  // Reset medium selection when release changes
+  useEffect(() => {
+    setSelectedMedium(1);
+  }, [selectedRelease?.id]);
 
   // Use custom search terms if set, otherwise use disc's original values
   const effectiveArtist = searchArtist || disc?.artist || '';
@@ -121,7 +137,10 @@ export function MatchFixer({ disc, open, onClose, onSuccess }: MatchFixerProps) 
       setSearchAlbum('');
       setHasSearched(false);
       setSelectedRelease(null);
+      setSelectedMedium(1);
       setManualMbid('');
+      setManualLookupResult(null);
+      setLookupError(null);
       onClose();
     }
   };
@@ -129,7 +148,29 @@ export function MatchFixer({ disc, open, onClose, onSuccess }: MatchFixerProps) 
   const handleSearch = () => {
     setHasSearched(true);
     setSelectedRelease(null);
+    setManualLookupResult(null);
+    setLookupError(null);
     refetch();
+  };
+
+  const handleLookup = async () => {
+    const mbid = manualMbid.trim();
+    if (mbid.length !== 36) return;
+
+    setIsLookingUp(true);
+    setLookupError(null);
+    setManualLookupResult(null);
+    setHasSearched(false);
+
+    try {
+      const release = await lookupMusicBrainzRelease(mbid);
+      setManualLookupResult(release);
+      setSelectedRelease(release);
+    } catch (error) {
+      setLookupError(error instanceof Error ? error.message : 'Failed to lookup release');
+    } finally {
+      setIsLookingUp(false);
+    }
   };
 
   const handleApply = async () => {
@@ -138,11 +179,15 @@ export function MatchFixer({ disc, open, onClose, onSuccess }: MatchFixerProps) 
     const mbid = selectedRelease?.id || manualMbid.trim();
     if (!mbid) return;
 
+    // Only pass mediumPosition if it's a multi-disc release and user selected a disc
+    const isMultiDisc = selectedRelease && selectedRelease.mediaCount > 1;
+
     try {
       await enrichMutation.mutateAsync({
         player: disc.player,
         position: disc.position,
         musicbrainzId: mbid,
+        mediumPosition: isMultiDisc ? selectedMedium : undefined,
       });
       onSuccess?.();
       handleOpenChange(false);
@@ -260,24 +305,77 @@ export function MatchFixer({ disc, open, onClose, onSuccess }: MatchFixerProps) 
 
         {/* Footer - always visible */}
         <div className="shrink-0 space-y-4 mt-4">
+          {/* Disc selector for multi-disc releases */}
+          {selectedRelease && selectedRelease.mediaCount > 1 && (
+            <div className="p-3 bg-muted/50 rounded-lg border border-border">
+              <label className="text-sm font-medium flex items-center gap-2">
+                <DiscIcon className="w-4 h-4" />
+                Select which disc to load:
+              </label>
+              <div className="flex flex-wrap gap-2 mt-2">
+                {Array.from({ length: selectedRelease.mediaCount }, (_, i) => (
+                  <Button
+                    key={i + 1}
+                    variant={selectedMedium === i + 1 ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setSelectedMedium(i + 1)}
+                  >
+                    Disc {i + 1}
+                  </Button>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                This release has {selectedRelease.mediaCount} discs. Select the one that matches the physical CD in slot {disc?.position}.
+              </p>
+            </div>
+          )}
+
           {/* Manual MBID Entry */}
           <div className="pt-4 border-t border-border">
             <label className="text-sm font-medium">
               Or enter MusicBrainz Release ID manually:
             </label>
-            <Input
-              placeholder="e.g., 12345678-1234-1234-1234-123456789012 or paste URL"
-              value={manualMbid}
-              onChange={(e) => handleManualMbidChange(e.target.value)}
-              className="mt-2"
-              disabled={!!selectedRelease}
-            />
-            {selectedRelease && (
-              <p className="text-xs text-muted-foreground mt-1">
-                Clear the selected release above to enter an ID manually.
-              </p>
+            <div className="flex gap-2 mt-2">
+              <Input
+                placeholder="e.g., 12345678-1234-1234-1234-123456789012 or paste URL"
+                value={manualMbid}
+                onChange={(e) => handleManualMbidChange(e.target.value)}
+                className="flex-1"
+                onKeyDown={(e) => e.key === 'Enter' && handleLookup()}
+              />
+              <Button
+                onClick={handleLookup}
+                disabled={manualMbid.trim().length !== 36 || isLookingUp}
+                variant="secondary"
+              >
+                {isLookingUp ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Search className="w-4 h-4" />
+                )}
+              </Button>
+            </div>
+            {lookupError && (
+              <div className="flex items-center gap-2 text-destructive text-sm mt-2">
+                <AlertCircle className="w-4 h-4" />
+                <span>{lookupError}</span>
+              </div>
             )}
           </div>
+
+          {/* Manual Lookup Result */}
+          {manualLookupResult && !hasSearched && (
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">
+                Found release:
+              </p>
+              <ReleaseCard
+                release={manualLookupResult}
+                selected={selectedRelease?.id === manualLookupResult.id}
+                onSelect={() => setSelectedRelease(manualLookupResult)}
+              />
+            </div>
+          )}
 
           {/* Actions */}
           <div className="flex justify-end gap-2">

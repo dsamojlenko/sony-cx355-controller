@@ -18,11 +18,13 @@ export function useEnrichDisc() {
       player,
       position,
       musicbrainzId,
+      mediumPosition,
     }: {
       player: number;
       position: number;
       musicbrainzId?: string;
-    }) => enrichDisc(player, position, musicbrainzId),
+      mediumPosition?: number;
+    }) => enrichDisc(player, position, musicbrainzId, mediumPosition),
     onSuccess: (_, { player, position }) => {
       // Invalidate disc queries to refresh data
       queryClient.invalidateQueries({ queryKey: ['disc', player, position] });

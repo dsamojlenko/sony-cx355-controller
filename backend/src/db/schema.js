@@ -110,6 +110,14 @@ class DatabaseSchema {
       INSERT OR IGNORE INTO playback_state (id, state) VALUES (1, 'stop');
     `);
 
+    // Migration: Add medium_position column if it doesn't exist
+    try {
+      this.db.exec('ALTER TABLE discs ADD COLUMN medium_position INTEGER DEFAULT 1');
+      console.log('✓ Added medium_position column to discs table');
+    } catch (e) {
+      // Column already exists, ignore
+    }
+
     console.log('✓ Database schema initialized');
   }
 

@@ -64,8 +64,10 @@ class MusicBrainzService {
 
   /**
    * Get detailed release information including tracks
+   * @param {string} releaseId - MusicBrainz release ID
+   * @param {number} mediumPosition - Which disc of a multi-disc set (1-indexed, default 1)
    */
-  async getRelease(releaseId) {
+  async getRelease(releaseId, mediumPosition = 1) {
     await this._waitForRateLimit();
 
     try {
@@ -80,11 +82,15 @@ class MusicBrainzService {
       });
 
       const release = response.data;
+      const mediaCount = release.media ? release.media.length : 1;
 
-      // Parse track information
+      // Parse track information from the specified medium (disc)
       const tracks = [];
-      if (release.media && release.media[0] && release.media[0].tracks) {
-        release.media[0].tracks.forEach((track, index) => {
+      const mediaIndex = mediumPosition - 1;
+      const medium = release.media && release.media[mediaIndex];
+
+      if (medium && medium.tracks) {
+        medium.tracks.forEach((track, index) => {
           tracks.push({
             track_number: index + 1,
             title: track.title,
@@ -103,6 +109,8 @@ class MusicBrainzService {
         year: release.date ? parseInt(release.date.split('-')[0]) : null,
         track_count: tracks.length,
         duration_seconds: tracks.reduce((sum, t) => sum + (t.duration_seconds || 0), 0),
+        medium_position: mediumPosition,
+        media_count: mediaCount,
         tracks
       };
 
@@ -162,8 +170,9 @@ class MusicBrainzService {
    * @param {string} artist - Artist name
    * @param {string} album - Album name
    * @param {string} releaseId - Optional: specific MusicBrainz release ID
+   * @param {number} mediumPosition - Which disc of a multi-disc set (1-indexed, default 1)
    */
-  async enrichDisc(player, position, artist, album, releaseId = null) {
+  async enrichDisc(player, position, artist, album, releaseId = null, mediumPosition = 1) {
     try {
       let mbid = releaseId;
 
@@ -182,8 +191,8 @@ class MusicBrainzService {
       }
 
       // Get detailed release information
-      console.log(`[MusicBrainz] Fetching release details for ${mbid}...`);
-      const metadata = await this.getRelease(mbid);
+      console.log(`[MusicBrainz] Fetching release details for ${mbid} (disc ${mediumPosition})...`);
+      const metadata = await this.getRelease(mbid, mediumPosition);
 
       // Download cover art
       console.log(`[MusicBrainz] Downloading cover art...`);
@@ -218,6 +227,7 @@ class MusicBrainzService {
         ? [...new Set(release.media.map(m => m.format).filter(Boolean))]
         : [];
       const format = formats.length > 0 ? formats.join(' + ') : 'Unknown';
+      const mediaCount = release.media ? release.media.length : 1;
 
       return {
         id: release.id,
@@ -231,6 +241,7 @@ class MusicBrainzService {
           ? release['label-info'][0].label.name
           : 'Unknown',
         format,
+        mediaCount,
         // Cover Art Archive thumbnail URL - frontend can try to load this
         coverArtUrl: `https://coverartarchive.org/release/${release.id}/front-250`
       };

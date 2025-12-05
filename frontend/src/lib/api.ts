@@ -119,11 +119,12 @@ export async function getStats(): Promise<StatsResponse> {
 export async function enrichDisc(
   player: number,
   position: number,
-  musicbrainzId?: string
+  musicbrainzId?: string,
+  mediumPosition?: number
 ): Promise<Disc> {
   return fetchJson<Disc>(`${API_BASE}/enrich/${player}/${position}`, {
     method: 'POST',
-    body: JSON.stringify({ musicbrainzId }),
+    body: JSON.stringify({ musicbrainzId, mediumPosition }),
   });
 }
 
@@ -134,4 +135,11 @@ export async function searchMusicBrainz(
 ): Promise<MusicBrainzRelease[]> {
   const params = new URLSearchParams({ artist, album });
   return fetchJson<MusicBrainzRelease[]>(`${API_BASE}/search/musicbrainz?${params}`);
+}
+
+// MusicBrainz single release lookup
+export async function lookupMusicBrainzRelease(
+  mbid: string
+): Promise<MusicBrainzRelease> {
+  return fetchJson<MusicBrainzRelease>(`${API_BASE}/musicbrainz/release/${mbid}`);
 }

@@ -282,6 +282,38 @@ router.get('/search/musicbrainz', async (req, res) => {
 });
 
 /**
+ * GET /api/musicbrainz/release/:mbid
+ * Lookup a single MusicBrainz release by ID
+ */
+router.get('/musicbrainz/release/:mbid', async (req, res) => {
+  try {
+    const { mbid } = req.params;
+
+    if (!mbid || mbid.length !== 36) {
+      return res.status(400).json({ error: 'Valid MusicBrainz ID required' });
+    }
+
+    const metadata = await musicbrainz.getRelease(mbid);
+
+    // Format response like getSuggestions for consistency
+    res.json({
+      id: metadata.musicbrainz_id,
+      title: metadata.album,
+      artist: metadata.artist || 'Unknown',
+      date: metadata.year ? String(metadata.year) : 'Unknown',
+      country: 'Unknown',
+      label: 'Unknown',
+      format: 'CD',
+      mediaCount: metadata.media_count || 1,
+      coverArtUrl: `https://coverartarchive.org/release/${mbid}/front-250`
+    });
+  } catch (error) {
+    console.error('MusicBrainz lookup error:', error);
+    res.status(500).json({ error: 'Failed to lookup release' });
+  }
+});
+
+/**
  * POST /api/enrich/:player/:position
  * Enrich disc with MusicBrainz data
  */
@@ -289,7 +321,7 @@ router.post('/enrich/:player/:position', async (req, res) => {
   try {
     const player = parseInt(req.params.player);
     const position = parseInt(req.params.position);
-    const { musicbrainzId } = req.body;
+    const { musicbrainzId, mediumPosition } = req.body;
 
     // Get current disc info
     const disc = db.getDisc(player, position);
@@ -297,13 +329,14 @@ router.post('/enrich/:player/:position', async (req, res) => {
       return res.status(404).json({ error: 'Disc not found' });
     }
 
-    // Enrich with MusicBrainz
+    // Enrich with MusicBrainz (mediumPosition for multi-disc releases)
     const metadata = await musicbrainz.enrichDisc(
       player,
       position,
       disc.artist,
       disc.album,
-      musicbrainzId
+      musicbrainzId,
+      mediumPosition || 1
     );
 
     // Update database

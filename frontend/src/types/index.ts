@@ -10,6 +10,7 @@ export interface Disc {
   cover_art_path?: string;
   track_count?: number;
   duration_seconds?: number;
+  medium_position?: number;
   play_count: number;
   last_played?: string;
   created_at?: string;
@@ -84,5 +85,6 @@ export interface MusicBrainzRelease {
   country: string;
   label: string;
   format: string;
+  mediaCount: number;
   coverArtUrl: string;
 }

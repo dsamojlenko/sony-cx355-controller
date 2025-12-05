@@ -16,7 +16,7 @@ class DatabaseService {
     let query = `
       SELECT
         id, player, position, artist, album, year, genre, cover_art_path,
-        musicbrainz_id, track_count, play_count, last_played
+        musicbrainz_id, track_count, play_count, last_played, medium_position
       FROM discs
       WHERE 1=1
     `;
@@ -121,8 +121,8 @@ class DatabaseService {
     const stmt = this.db.prepare(`
       INSERT INTO discs (
         player, position, artist, album, musicbrainz_id, year, genre,
-        cover_art_path, track_count, duration_seconds, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        cover_art_path, track_count, duration_seconds, medium_position, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
       ON CONFLICT(player, position) DO UPDATE SET
         artist = excluded.artist,
         album = excluded.album,
@@ -132,6 +132,7 @@ class DatabaseService {
         cover_art_path = excluded.cover_art_path,
         track_count = excluded.track_count,
         duration_seconds = excluded.duration_seconds,
+        medium_position = excluded.medium_position,
         updated_at = CURRENT_TIMESTAMP
     `);
 
@@ -145,7 +146,8 @@ class DatabaseService {
       data.genre || null,
       data.cover_art_path || null,
       data.track_count || null,
-      data.duration_seconds || null
+      data.duration_seconds || null,
+      data.medium_position || 1
     );
   }
 
