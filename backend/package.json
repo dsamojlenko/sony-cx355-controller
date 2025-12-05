@@ -7,7 +7,8 @@
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "init-db": "node src/db/init.js",
-    "import": "node src/scripts/import-csv.js"
+    "import": "node src/scripts/import-csv.js",
+    "enrich": "node src/scripts/enrich-discs.js"
   },
   "keywords": ["cd", "jukebox", "musicbrainz"],
   "author": "",
