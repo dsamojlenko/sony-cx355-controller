@@ -23,6 +23,7 @@ export default defineConfig({
   },
   build: {
     outDir: '../backend/public',
-    emptyOutDir: true,
+    // Don't empty outDir - it contains covers/ with downloaded album art
+    emptyOutDir: false,
   },
 })

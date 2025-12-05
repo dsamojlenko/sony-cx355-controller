@@ -8,9 +8,9 @@ import {
   Square,
   SkipBack,
   SkipForward,
-  Disc,
   Loader2,
 } from 'lucide-react';
+import { getCoverUrl } from '@/lib/utils';
 
 function formatDuration(seconds?: number): string {
   if (!seconds) return '--:--';
@@ -41,22 +41,16 @@ export function NowPlaying() {
   const isLoadingDisc = state?.state === 'loading';
   const hasDisc = state?.current_disc != null;
 
-  const coverUrl = state?.cover_art_path ? `/covers/${state.cover_art_path}` : null;
-
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-card border-t border-border p-4 z-50">
       <div className="max-w-7xl mx-auto flex items-center gap-4">
         {/* Cover Art */}
-        <div className="w-16 h-16 rounded bg-muted flex items-center justify-center flex-shrink-0">
-          {coverUrl ? (
-            <img
-              src={coverUrl}
-              alt={state?.album || 'Album cover'}
-              className="w-full h-full object-cover rounded"
-            />
-          ) : (
-            <Disc className="w-8 h-8 text-muted-foreground" />
-          )}
+        <div className="w-16 h-16 rounded bg-muted shrink-0 overflow-hidden">
+          <img
+            src={getCoverUrl(state?.cover_art_path)}
+            alt={state?.album || 'Album cover'}
+            className="w-full h-full object-cover"
+          />
         </div>
 
         {/* Track Info */}

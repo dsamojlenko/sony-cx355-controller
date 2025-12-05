@@ -2,6 +2,7 @@ import { useStats } from '@/hooks/useStats';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Disc as DiscIcon, Play, Clock, Library } from 'lucide-react';
+import { getCoverUrl } from '@/lib/utils';
 import type { Disc } from '@/types';
 
 interface DiscListItemProps {
@@ -11,23 +12,17 @@ interface DiscListItemProps {
 }
 
 function DiscListItem({ disc, onClick, showPlayCount }: DiscListItemProps) {
-  const coverUrl = disc.cover_art_path ? `/covers/${disc.cover_art_path}` : null;
-
   return (
     <button
       onClick={onClick}
       className="flex items-center gap-3 p-2 rounded hover:bg-accent/50 transition-colors w-full text-left"
     >
-      <div className="w-12 h-12 rounded bg-muted flex items-center justify-center flex-shrink-0 overflow-hidden">
-        {coverUrl ? (
-          <img
-            src={coverUrl}
-            alt={disc.album}
-            className="w-full h-full object-cover"
-          />
-        ) : (
-          <DiscIcon className="w-6 h-6 text-muted-foreground" />
-        )}
+      <div className="w-12 h-12 rounded bg-muted shrink-0 overflow-hidden">
+        <img
+          src={getCoverUrl(disc.cover_art_path)}
+          alt={disc.album}
+          className="w-full h-full object-cover"
+        />
       </div>
       <div className="flex-1 min-w-0">
         <div className="font-medium truncate text-sm">{disc.album}</div>

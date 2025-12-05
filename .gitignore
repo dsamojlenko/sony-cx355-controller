@@ -45,3 +45,11 @@ backend/public/covers/*.jpg
 backend/public/covers/*.png
 backend/.env
 backend/npm-debug.log*
+
+# Frontend build output (served from backend/public)
+backend/public/index.html
+backend/public/assets/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/

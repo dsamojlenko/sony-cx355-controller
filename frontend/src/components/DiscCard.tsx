@@ -1,6 +1,6 @@
-import { Disc as DiscIcon } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { getCoverUrl } from '@/lib/utils';
 import type { Disc } from '@/types';
 
 interface DiscCardProps {
@@ -10,8 +10,6 @@ interface DiscCardProps {
 }
 
 export function DiscCard({ disc, onClick, isPlaying }: DiscCardProps) {
-  const coverUrl = disc.cover_art_path ? `/covers/${disc.cover_art_path}` : null;
-
   return (
     <Card
       className={`cursor-pointer transition-all hover:bg-accent/50 ${
@@ -21,17 +19,13 @@ export function DiscCard({ disc, onClick, isPlaying }: DiscCardProps) {
     >
       <CardContent className="p-3">
         {/* Cover Art */}
-        <div className="aspect-square rounded bg-muted mb-3 flex items-center justify-center overflow-hidden">
-          {coverUrl ? (
-            <img
-              src={coverUrl}
-              alt={`${disc.artist} - ${disc.album}`}
-              className="w-full h-full object-cover"
-              loading="lazy"
-            />
-          ) : (
-            <DiscIcon className="w-12 h-12 text-muted-foreground" />
-          )}
+        <div className="aspect-square rounded bg-muted mb-3 overflow-hidden">
+          <img
+            src={getCoverUrl(disc.cover_art_path)}
+            alt={`${disc.artist} - ${disc.album}`}
+            className="w-full h-full object-cover"
+            loading="lazy"
+          />
         </div>
 
         {/* Info */}

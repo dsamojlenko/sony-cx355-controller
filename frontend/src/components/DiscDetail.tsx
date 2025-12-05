@@ -11,7 +11,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Disc as DiscIcon, Play, Clock } from 'lucide-react';
+import { Play, Clock } from 'lucide-react';
+import { getCoverUrl } from '@/lib/utils';
 import type { Disc } from '@/types';
 
 interface DiscDetailProps {
@@ -61,10 +62,6 @@ export function DiscDetail({ disc, open, onClose }: DiscDetailProps) {
     play({ player: disc.player, disc: disc.position, track: trackNumber });
   };
 
-  const coverUrl = discWithTracks?.cover_art_path
-    ? `/covers/${discWithTracks.cover_art_path}`
-    : null;
-
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
       <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
@@ -95,16 +92,12 @@ export function DiscDetail({ disc, open, onClose }: DiscDetailProps) {
             {/* Header with cover and info */}
             <div className="flex gap-4 mb-4">
               {/* Cover Art */}
-              <div className="w-40 h-40 rounded bg-muted flex items-center justify-center flex-shrink-0 overflow-hidden">
-                {coverUrl ? (
-                  <img
-                    src={coverUrl}
-                    alt={discWithTracks.album}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <DiscIcon className="w-16 h-16 text-muted-foreground" />
-                )}
+              <div className="w-40 h-40 rounded bg-muted shrink-0 overflow-hidden">
+                <img
+                  src={getCoverUrl(discWithTracks.cover_art_path)}
+                  alt={discWithTracks.album}
+                  className="w-full h-full object-cover"
+                />
               </div>
 
               {/* Info */}
