@@ -43,6 +43,7 @@ export function NowPlaying({ onDiscClick }: NowPlayingProps) {
   }
 
   const isPlaying = state?.state === 'play';
+  const isPaused = state?.state === 'pause';
   const isLoadingDisc = state?.state === 'loading';
   const hasDisc = state?.current_disc != null;
 
@@ -138,7 +139,11 @@ export function NowPlaying({ onDiscClick }: NowPlayingProps) {
               variant="ghost"
               size="icon"
               onClick={() => {
-                if (hasDisc && state?.current_player && state?.current_disc) {
+                if (isPaused) {
+                  // Pause is a toggle command - sending it again resumes playback
+                  controls.pause();
+                } else if (hasDisc && state?.current_player && state?.current_disc) {
+                  // Stopped state - send full play command
                   controls.play({
                     player: state.current_player,
                     disc: state.current_disc,

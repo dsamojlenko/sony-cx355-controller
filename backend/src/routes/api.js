@@ -127,6 +127,8 @@ router.post('/state', (req, res) => {
   try {
     const { player, disc, track, state } = req.body;
 
+    console.log(`[API] State update received: player=${player} disc=${disc} track=${track} state=${state}`);
+
     if (!player || !disc || !track || !state) {
       return res.status(400).json({ error: 'Missing required fields (player, disc, track, state)' });
     }
@@ -136,6 +138,7 @@ router.post('/state', (req, res) => {
     // Broadcast to WebSocket clients
     if (req.app.get('io')) {
       const playbackState = db.getPlaybackState();
+      console.log('[API] Broadcasting state via WebSocket:', playbackState?.state);
       req.app.get('io').emit('state', playbackState);
     }
 

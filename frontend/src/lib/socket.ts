@@ -28,6 +28,7 @@ class SocketClient {
     });
 
     this.socket.on('state', (state: PlaybackState) => {
+      console.log('Socket received state:', state);
       this.stateCallbacks.forEach((cb) => cb(state));
     });
 

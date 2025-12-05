@@ -43,9 +43,38 @@ void onStatus(const SlinkTrackStatus& st) {
     }
 }
 
-// optional: react to transport codes
+// React to transport codes (play/pause/stop) and update backend
 void onTransport(uint8_t code) {
-    (void)code;
+    // Update our local state based on transport code
+    switch (code) {
+        case 0x00: // PLAY
+            currentState.playing = true;
+            currentState.paused = false;
+            currentState.stopped = false;
+            break;
+        case 0x04: // PAUSE
+            currentState.playing = false;
+            currentState.paused = true;
+            currentState.stopped = false;
+            break;
+        case 0x01: // STOP
+            currentState.playing = false;
+            currentState.paused = false;
+            currentState.stopped = true;
+            break;
+        default:
+            return; // Don't send update for unknown codes
+    }
+
+    // Send updated state to backend (if we have disc/track info)
+    if (backend.isBackendConnected() && currentState.haveStatus) {
+        PlayerState ps;
+        ps.player = currentState.player;
+        ps.disc = currentState.discNumber;
+        ps.track = currentState.trackNumber;
+        ps.state = currentState.playing ? "play" : (currentState.paused ? "pause" : "stop");
+        backend.sendState(ps);
+    }
 }
 
 // Parse hex byte from string, returns -1 on error
@@ -336,6 +365,18 @@ void handleSerialCommand() {
     }
 }
 
+// Helper to send current state to backend
+void sendStateToBackend(const char* newState) {
+    if (backend.isBackendConnected() && currentState.haveStatus) {
+        PlayerState ps;
+        ps.player = currentState.player;
+        ps.disc = currentState.discNumber;
+        ps.track = currentState.trackNumber;
+        ps.state = newState;
+        backend.sendState(ps);
+    }
+}
+
 // Process commands received from backend
 void processBackendCommand() {
     if (!backend.hasCommand()) return;
@@ -353,14 +394,37 @@ void processBackendCommand() {
         } else {
             slinkTx.play();
         }
+        // Update local state and notify backend
+        currentState.playing = true;
+        currentState.paused = false;
+        currentState.stopped = false;
+        sendStateToBackend("play");
     } else if (strcmp(cmd.action, "pause") == 0) {
         slinkTx.pause();
+        // Pause is a toggle - flip between play and pause
+        if (currentState.paused) {
+            // Was paused, now playing
+            currentState.playing = true;
+            currentState.paused = false;
+            sendStateToBackend("play");
+        } else {
+            // Was playing, now paused
+            currentState.playing = false;
+            currentState.paused = true;
+            sendStateToBackend("pause");
+        }
     } else if (strcmp(cmd.action, "stop") == 0) {
         slinkTx.stop();
+        currentState.playing = false;
+        currentState.paused = false;
+        currentState.stopped = true;
+        sendStateToBackend("stop");
     } else if (strcmp(cmd.action, "next") == 0) {
         slinkTx.nextTrack();
+        // Don't update state - wait for actual track change from CD player
     } else if (strcmp(cmd.action, "previous") == 0) {
         slinkTx.prevTrack();
+        // Don't update state - wait for actual track change from CD player
     }
 
     // Acknowledge the command
