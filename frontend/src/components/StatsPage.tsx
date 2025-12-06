@@ -3,15 +3,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Disc as DiscIcon, Play, Clock, Library } from 'lucide-react';
 import { getCoverUrl } from '@/lib/utils';
-import type { Disc } from '@/types';
+import type { Disc, MostPlayedAlbum } from '@/types';
 
 interface DiscListItemProps {
   disc: Disc;
   onClick?: () => void;
-  showPlayCount?: boolean;
 }
 
-function DiscListItem({ disc, onClick, showPlayCount }: DiscListItemProps) {
+function DiscListItem({ disc, onClick }: DiscListItemProps) {
   return (
     <button
       onClick={onClick}
@@ -28,11 +27,38 @@ function DiscListItem({ disc, onClick, showPlayCount }: DiscListItemProps) {
         <div className="font-medium truncate text-sm">{disc.album}</div>
         <div className="text-xs text-muted-foreground truncate">{disc.artist}</div>
       </div>
-      {showPlayCount && disc.play_count > 0 && (
-        <div className="text-xs text-muted-foreground">
-          {disc.play_count} play{disc.play_count !== 1 ? 's' : ''}
-        </div>
-      )}
+    </button>
+  );
+}
+
+interface AlbumListItemProps {
+  album: MostPlayedAlbum;
+  onClick?: () => void;
+}
+
+function AlbumListItem({ album, onClick }: AlbumListItemProps) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex items-center gap-3 p-2 rounded hover:bg-accent/50 transition-colors w-full text-left"
+    >
+      <div className="w-12 h-12 rounded bg-muted shrink-0 overflow-hidden">
+        <img
+          src={getCoverUrl(album.cover_art_path)}
+          alt={album.album}
+          className="w-full h-full object-cover"
+        />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="font-medium truncate text-sm">{album.album}</div>
+        <div className="text-xs text-muted-foreground truncate">{album.artist}</div>
+      </div>
+      <div className="text-xs text-muted-foreground text-right">
+        <div>{album.total_track_plays} track{album.total_track_plays !== 1 ? 's' : ''}</div>
+        {album.album_plays > 0 && (
+          <div className="text-primary">{album.album_plays} full play{album.album_plays !== 1 ? 's' : ''}</div>
+        )}
+      </div>
     </button>
   );
 }
@@ -90,11 +116,11 @@ export function StatsPage({ onDiscSelect }: StatsPageProps) {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Total Plays</CardTitle>
+            <CardTitle className="text-sm font-medium">Track Plays</CardTitle>
             <Play className="w-4 h-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{data.totalPlays}</div>
+            <div className="text-2xl font-bold">{data.totalTrackPlays}</div>
           </CardContent>
         </Card>
 
@@ -104,13 +130,13 @@ export function StatsPage({ onDiscSelect }: StatsPageProps) {
             <DiscIcon className="w-4 h-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            {data.mostPlayed[0] ? (
+            {data.mostPlayedAlbums?.[0] ? (
               <>
                 <div className="text-lg font-bold truncate">
-                  {data.mostPlayed[0].album}
+                  {data.mostPlayedAlbums[0].album}
                 </div>
                 <p className="text-xs text-muted-foreground truncate">
-                  {data.mostPlayed[0].artist}
+                  {data.mostPlayedAlbums[0].artist}
                 </p>
               </>
             ) : (
@@ -143,20 +169,19 @@ export function StatsPage({ onDiscSelect }: StatsPageProps) {
 
       {/* Lists */}
       <div className="grid gap-6 md:grid-cols-2">
-        {/* Most Played */}
+        {/* Most Played Albums */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Most Played</CardTitle>
+            <CardTitle className="text-lg">Most Played Albums</CardTitle>
           </CardHeader>
           <CardContent className="p-0 px-2 pb-2">
-            {data.mostPlayed.length > 0 ? (
+            {data.mostPlayedAlbums.length > 0 ? (
               <div className="space-y-1">
-                {data.mostPlayed.map((disc) => (
-                  <DiscListItem
-                    key={`${disc.player}-${disc.position}`}
-                    disc={disc}
-                    onClick={() => onDiscSelect(disc)}
-                    showPlayCount
+                {data.mostPlayedAlbums.map((album) => (
+                  <AlbumListItem
+                    key={`${album.player}-${album.position}`}
+                    album={album}
+                    onClick={() => onDiscSelect(album as unknown as Disc)}
                   />
                 ))}
               </div>

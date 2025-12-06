@@ -51,12 +51,35 @@ export interface DiscsResponse {
   total: number;
 }
 
+export interface MostPlayedAlbum {
+  id: number;
+  player: 1 | 2;
+  position: number;
+  artist: string;
+  album: string;
+  track_count: number;
+  album_plays: number;
+  total_track_plays: number;
+  cover_art_path?: string;
+}
+
+export interface MostPlayedTrack {
+  player: 1 | 2;
+  position: number;
+  artist: string;
+  album: string;
+  track_number: number;
+  track_title?: string;
+  play_count: number;
+}
+
 export interface StatsResponse {
   totalDiscs: number;
   player1Discs: number;
   player2Discs: number;
-  totalPlays: number;
-  mostPlayed: Disc[];
+  totalTrackPlays: number;
+  mostPlayedAlbums: MostPlayedAlbum[];
+  mostPlayedTracks: MostPlayedTrack[];
   recentlyPlayed: Disc[];
 }
 

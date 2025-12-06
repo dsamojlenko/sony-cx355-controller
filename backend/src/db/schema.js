@@ -95,6 +95,17 @@ class DatabaseSchema {
       );
     `);
 
+    // Track plays table - records individual track play events
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS track_plays (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        disc_id INTEGER NOT NULL,
+        track_number INTEGER NOT NULL,
+        played_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (disc_id) REFERENCES discs(id) ON DELETE CASCADE
+      );
+    `);
+
     // Create indexes for better query performance
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_discs_player ON discs(player);
@@ -103,6 +114,8 @@ class DatabaseSchema {
       CREATE INDEX IF NOT EXISTS idx_discs_last_played ON discs(last_played DESC);
       CREATE INDEX IF NOT EXISTS idx_tracks_disc ON tracks(disc_id);
       CREATE INDEX IF NOT EXISTS idx_command_queue_ack ON command_queue(acknowledged);
+      CREATE INDEX IF NOT EXISTS idx_track_plays_disc ON track_plays(disc_id);
+      CREATE INDEX IF NOT EXISTS idx_track_plays_disc_track ON track_plays(disc_id, track_number);
     `);
 
     // Initialize playback state with a single row

@@ -210,6 +210,12 @@ class DatabaseService {
    * Update playback state
    */
   updatePlaybackState(player, disc, track, state) {
+    // Get current state before updating
+    const currentState = this.db.prepare(`
+      SELECT current_player, current_disc, current_track, state
+      FROM playback_state WHERE id = 1
+    `).get();
+
     const stmt = this.db.prepare(`
       UPDATE playback_state
       SET current_player = ?, current_disc = ?, current_track = ?, state = ?, updated_at = CURRENT_TIMESTAMP
@@ -218,16 +224,85 @@ class DatabaseService {
 
     stmt.run(player, disc, track, state);
 
-    // Increment play count and update last_played if disc changed
-    if (player && disc && state === 'play') {
-      this.db.prepare(`
-        UPDATE discs
-        SET play_count = play_count + 1,
-            last_played = CURRENT_TIMESTAMP
-        WHERE player = ? AND position = ?
-        AND (last_played IS NULL OR datetime(last_played) < datetime('now', '-1 minute'))
-      `).run(player, disc);
+    // Record track play when track changes and state is 'play'
+    if (player && disc && track && state === 'play') {
+      const trackChanged = !currentState ||
+        currentState.current_player !== player ||
+        currentState.current_disc !== disc ||
+        currentState.current_track !== track;
+
+      if (trackChanged) {
+        this.recordTrackPlay(player, disc, track);
+      }
     }
+  }
+
+  /**
+   * Record a track play event
+   */
+  recordTrackPlay(player, disc, track) {
+    const discRecord = this.db.prepare(`
+      SELECT id FROM discs WHERE player = ? AND position = ?
+    `).get(player, disc);
+
+    if (discRecord) {
+      this.db.prepare(`
+        INSERT INTO track_plays (disc_id, track_number, played_at)
+        VALUES (?, ?, CURRENT_TIMESTAMP)
+      `).run(discRecord.id, track);
+
+      // Update last_played on the disc
+      this.db.prepare(`
+        UPDATE discs SET last_played = CURRENT_TIMESTAMP WHERE id = ?
+      `).run(discRecord.id);
+    }
+  }
+
+  /**
+   * Get track play counts for a disc
+   */
+  getTrackPlayCounts(discId) {
+    return this.db.prepare(`
+      SELECT track_number, COUNT(*) as play_count
+      FROM track_plays
+      WHERE disc_id = ?
+      GROUP BY track_number
+      ORDER BY track_number
+    `).all(discId);
+  }
+
+  /**
+   * Calculate album play count (minimum plays across all tracks)
+   * Returns 0 if not all tracks have been played at least once
+   */
+  getAlbumPlayCount(discId) {
+    const disc = this.db.prepare(`
+      SELECT track_count FROM discs WHERE id = ?
+    `).get(discId);
+
+    if (!disc || !disc.track_count) {
+      return 0;
+    }
+
+    const trackPlays = this.getTrackPlayCounts(discId);
+
+    // If we haven't played all tracks, album play count is 0
+    if (trackPlays.length < disc.track_count) {
+      return 0;
+    }
+
+    // Album plays = minimum play count across all tracks
+    return Math.min(...trackPlays.map(t => t.play_count));
+  }
+
+  /**
+   * Get total track plays for a disc
+   */
+  getTotalTrackPlays(discId) {
+    const result = this.db.prepare(`
+      SELECT COUNT(*) as count FROM track_plays WHERE disc_id = ?
+    `).get(discId);
+    return result.count;
   }
 
   /**
@@ -298,19 +373,41 @@ class DatabaseService {
     const totalDiscs = this.db.prepare('SELECT COUNT(*) as count FROM discs').get().count;
     const player1Discs = this.db.prepare('SELECT COUNT(*) as count FROM discs WHERE player = 1').get().count;
     const player2Discs = this.db.prepare('SELECT COUNT(*) as count FROM discs WHERE player = 2').get().count;
-    const totalPlays = this.db.prepare('SELECT SUM(play_count) as count FROM discs').get().count || 0;
-    const mostPlayed = this.db.prepare(`
-      SELECT player, position, artist, album, play_count
-      FROM discs
-      WHERE play_count > 0
+    const totalTrackPlays = this.db.prepare('SELECT COUNT(*) as count FROM track_plays').get().count || 0;
+
+    // Get most played albums (by track plays)
+    const mostPlayedAlbums = this.db.prepare(`
+      SELECT d.id, d.player, d.position, d.artist, d.album, d.track_count, d.cover_art_path,
+             COUNT(tp.id) as total_track_plays
+      FROM discs d
+      JOIN track_plays tp ON d.id = tp.disc_id
+      GROUP BY d.id
+      ORDER BY total_track_plays DESC
+      LIMIT 10
+    `).all().map(disc => ({
+      ...disc,
+      album_plays: this.getAlbumPlayCount(disc.id),
+      total_track_plays: disc.total_track_plays
+    }));
+
+    // Get most played individual tracks
+    const mostPlayedTracks = this.db.prepare(`
+      SELECT d.player, d.position, d.artist, d.album,
+             tp.track_number, t.title as track_title,
+             COUNT(tp.id) as play_count
+      FROM track_plays tp
+      JOIN discs d ON tp.disc_id = d.id
+      LEFT JOIN tracks t ON d.id = t.disc_id AND tp.track_number = t.track_number
+      GROUP BY tp.disc_id, tp.track_number
       ORDER BY play_count DESC
       LIMIT 10
     `).all();
+
     const recentlyPlayed = this.db.prepare(`
-      SELECT player, position, artist, album, last_played
-      FROM discs
-      WHERE last_played IS NOT NULL
-      ORDER BY last_played DESC
+      SELECT d.player, d.position, d.artist, d.album, d.cover_art_path, d.last_played
+      FROM discs d
+      WHERE d.last_played IS NOT NULL
+      ORDER BY d.last_played DESC
       LIMIT 10
     `).all();
 
@@ -318,8 +415,9 @@ class DatabaseService {
       totalDiscs,
       player1Discs,
       player2Discs,
-      totalPlays,
-      mostPlayed,
+      totalTrackPlays,
+      mostPlayedAlbums,
+      mostPlayedTracks,
       recentlyPlayed
     };
   }
