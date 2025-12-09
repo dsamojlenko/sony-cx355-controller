@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include <driver/rmt.h>
 
 struct SlinkTrackStatus {
     bool   playing = false;
@@ -34,15 +35,19 @@ public:
 private:
     // config
     int _rxPin;
+    rmt_channel_t _rmtChannel;
 
-    // RX pulse buffer
-    static const int    MAX_PULSES = 128;
-    unsigned long       _pulses[MAX_PULSES];
-    int                 _pulseCount = 0;
+    // RMT item buffer for received pulses
+    static const int MAX_RMT_ITEMS = 256;
+    rmt_item32_t _rmtItems[MAX_RMT_ITEMS];
 
-    int                 _lastState = HIGH;
-    unsigned long       _lastChange = 0;
-    unsigned long       _lastActivity = 0;
+    // Pulse buffer for decoding
+    static const int MAX_PULSES = 256;
+    unsigned long _pulses[MAX_PULSES];
+    int _pulseCount = 0;
+
+    // Frame accumulation
+    unsigned long _lastRxTime = 0;
 
     // last track signature
     uint8_t             _lastSig[8];
@@ -56,8 +61,8 @@ private:
     SlinkTransportCallback _transportCb = nullptr;
 
     // low-level helpers
-    void   _rxStep();
-    void   _flushFrame();
+    void   _pollRmt();
+    void   _processFrame();
     void   _decodeFrame();
     char   _classifyPulse(unsigned long dt);
 

@@ -2,29 +2,73 @@
 
 // ---- Timing constants ----
 
-// Gap between frames (µs) – if RX idle for this long, we treat it as end-of-frame
-static const unsigned long FRAME_GAP_US = 10000;  // 10 ms
+// RMT clock divider - 1MHz tick rate (1µs resolution)
+static const uint8_t RMT_CLK_DIV = 80;  // 80MHz / 80 = 1MHz
 
-// S-Link mark lengths (µs)
-static const unsigned long SLINK_MARK_SYNC  = 2400;  // start bit
-static const unsigned long SLINK_MARK_ONE   = 1200;  // logical 1
-static const unsigned long SLINK_MARK_ZERO  = 600;   // logical 0
+// Idle threshold in RMT ticks (µs) - if line is idle this long, frame ends
+// This is handled by RMT hardware, not software
+static const uint16_t RMT_IDLE_THRESHOLD = 20000;  // 20ms
+
+// Frame gap for software timeout (µs)
+static const unsigned long FRAME_GAP_US = 25000;  // 25ms
+
+// S-Link mark lengths (µs) - for reference
+// static const unsigned long SLINK_MARK_SYNC  = 2400;  // start bit
+// static const unsigned long SLINK_MARK_ONE   = 1200;  // logical 1
+// static const unsigned long SLINK_MARK_ZERO  = 600;   // logical 0
 
 // ---------------- Constructor / setup ----------------
 
 SlinkDecoder::SlinkDecoder(int rxPin)
-: _rxPin(rxPin) {
+: _rxPin(rxPin), _rmtChannel(RMT_CHANNEL_0) {
 }
 
 void SlinkDecoder::begin() {
-    pinMode(_rxPin, INPUT);
-    _lastState    = digitalRead(_rxPin);
-    _lastChange   = micros();
-    _lastActivity = _lastChange;
-    _pulseCount   = 0;
-    _haveLastSig  = false;
+    // Configure RMT for receiving
+    //
+    // IMPORTANT: Due to transistor level shifter, signal is INVERTED:
+    // - S-Link bus idle (HIGH) -> ESP32 sees LOW
+    // - S-Link bus active (LOW pulse) -> ESP32 sees HIGH
+    // So we configure RMT for idle-low operation
 
+    rmt_config_t rxConfig = RMT_DEFAULT_CONFIG_RX((gpio_num_t)_rxPin, _rmtChannel);
+    rxConfig.clk_div = RMT_CLK_DIV;
+    rxConfig.mem_block_num = 4;  // Use 4 memory blocks (256 items total)
+    rxConfig.rx_config.idle_threshold = RMT_IDLE_THRESHOLD;
+    rxConfig.rx_config.filter_en = true;
+    rxConfig.rx_config.filter_ticks_thresh = 100;  // Filter glitches < 100µs
+
+    // Set idle level to LOW (inverted signal)
+    rxConfig.flags = 0;  // No inversion needed - we handle it in pulse extraction
+
+    esp_err_t err = rmt_config(&rxConfig);
+    if (err != ESP_OK) {
+        Serial.print(F("[SlinkDecoder] RMT config failed: "));
+        Serial.println(err);
+        return;
+    }
+
+    err = rmt_driver_install(_rmtChannel, 2048, 0);  // 2KB ring buffer
+    if (err != ESP_OK) {
+        Serial.print(F("[SlinkDecoder] RMT driver install failed: "));
+        Serial.println(err);
+        return;
+    }
+
+    // Start receiving
+    err = rmt_rx_start(_rmtChannel, true);
+    if (err != ESP_OK) {
+        Serial.print(F("[SlinkDecoder] RMT rx start failed: "));
+        Serial.println(err);
+        return;
+    }
+
+    _pulseCount = 0;
+    _lastRxTime = 0;
+    _haveLastSig = false;
     _state = SlinkTrackStatus{};
+
+    Serial.println(F("[SlinkDecoder] RMT-based RX initialized"));
 }
 
 void SlinkDecoder::onStatus(SlinkStatusCallback cb) {
@@ -35,37 +79,58 @@ void SlinkDecoder::onTransport(SlinkTransportCallback cb) {
     _transportCb = cb;
 }
 
+// ---------------- Main loop ----------------
+
 void SlinkDecoder::loop() {
-    _rxStep();
+    _pollRmt();
 }
 
-// ---------------- RX loop & frame assembly ----------------
+void SlinkDecoder::_pollRmt() {
+    RingbufHandle_t rb = nullptr;
+    rmt_get_ringbuf_handle(_rmtChannel, &rb);
+    if (!rb) return;
 
-void SlinkDecoder::_rxStep() {
-    unsigned long now = micros();
-    int s = digitalRead(_rxPin);
+    size_t rxSize = 0;
+    rmt_item32_t* items = (rmt_item32_t*)xRingbufferReceive(rb, &rxSize, 0);
 
-    if (s != _lastState) {
-        unsigned long dt = now - _lastChange;
-        _lastChange   = now;
-        _lastActivity = now;
+    if (items && rxSize > 0) {
+        int numItems = rxSize / sizeof(rmt_item32_t);
 
-        if (_pulseCount < MAX_PULSES) {
-            _pulses[_pulseCount++] = dt;
+        // Convert RMT items to pulse durations
+        // RMT captures alternating level0/level1 durations
+        // We need ALL durations to find the sync and bit pulses
+        _pulseCount = 0;
+        for (int i = 0; i < numItems && _pulseCount < MAX_PULSES; i++) {
+            // Capture both durations from each RMT item
+            if (items[i].duration0 > 0) {
+                _pulses[_pulseCount++] = items[i].duration0;
+            }
+            if (items[i].duration1 > 0 && _pulseCount < MAX_PULSES) {
+                _pulses[_pulseCount++] = items[i].duration1;
+            }
+
+            // Check for end marker
+            if (items[i].duration0 == 0 && items[i].duration1 == 0) {
+                break;
+            }
         }
 
-        _lastState = s;
-    }
+        // Return buffer to ring buffer
+        vRingbufferReturnItem(rb, (void*)items);
 
-    if ((now - _lastActivity) > FRAME_GAP_US && _pulseCount > 0) {
-        _flushFrame();
+        // Process the frame if we got pulses
+        if (_pulseCount > 0) {
+            _lastRxTime = micros();
+            _processFrame();
+        }
     }
 }
 
-void SlinkDecoder::_flushFrame() {
-    if (_pulseCount == 0) return;
+void SlinkDecoder::_processFrame() {
+    if (_pulseCount < 3) {
+        return;
+    }
     _decodeFrame();
-    _pulseCount = 0;
 }
 
 // ---------------- Pulse classification & frame decode ----------------
@@ -128,6 +193,12 @@ void SlinkDecoder::_decodeFrame() {
     }
 
     if (byteCount == 0) {
+        return;
+    }
+
+    // Filter: S-Link status frames from CD players always start with 0x41
+    // Frames starting with 0x9x are our own TX commands being echoed back
+    if (bytes[0] != 0x41) {
         return;
     }
 
