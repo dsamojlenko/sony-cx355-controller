@@ -106,6 +106,15 @@ class DatabaseSchema {
       );
     `);
 
+    // Settings table - stores app configuration like Last.fm session
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
     // Create indexes for better query performance
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_discs_player ON discs(player);
@@ -127,6 +136,14 @@ class DatabaseSchema {
     try {
       this.db.exec('ALTER TABLE discs ADD COLUMN medium_position INTEGER DEFAULT 1');
       console.log('✓ Added medium_position column to discs table');
+    } catch (e) {
+      // Column already exists, ignore
+    }
+
+    // Migration: Add artist column to tracks table for compilation albums
+    try {
+      this.db.exec('ALTER TABLE tracks ADD COLUMN artist TEXT');
+      console.log('✓ Added artist column to tracks table');
     } catch (e) {
       // Column already exists, ignore
     }

@@ -3,8 +3,20 @@ const DatabaseService = require('../services/database');
 const MusicBrainzService = require('../services/musicbrainz');
 
 const router = express.Router();
-const db = new DatabaseService();
-const musicbrainz = new MusicBrainzService();
+
+// Services are injected via middleware from server.js
+// Fallback to creating instances if not injected (for backwards compatibility)
+let db = null;
+let musicbrainz = null;
+let lastfm = null;
+
+// Middleware to access services from app context
+router.use((req, res, next) => {
+  db = req.app.get('db') || db || new DatabaseService();
+  musicbrainz = req.app.get('musicbrainz') || musicbrainz || new MusicBrainzService();
+  lastfm = req.app.get('lastfm') || lastfm;
+  next();
+});
 
 /**
  * GET /api/discs
@@ -373,6 +385,139 @@ router.get('/stats', (req, res) => {
     console.error('Error fetching stats:', error);
     res.status(500).json({ error: 'Failed to fetch statistics' });
   }
+});
+
+// ============================================
+// Last.fm Integration Endpoints
+// ============================================
+
+/**
+ * GET /api/lastfm/status
+ * Check Last.fm authentication status
+ */
+router.get('/lastfm/status', (req, res) => {
+  if (!lastfm || !lastfm.isConfigured()) {
+    return res.json({
+      configured: false,
+      authenticated: false,
+      message: 'Last.fm API credentials not configured'
+    });
+  }
+
+  // Get saved username from database
+  const username = db.getSetting('lastfm_username');
+
+  res.json({
+    configured: true,
+    authenticated: lastfm.isAuthenticated(),
+    username: lastfm.isAuthenticated() ? username : null
+  });
+});
+
+/**
+ * GET /api/lastfm/auth
+ * Get Last.fm authorization URL or redirect directly
+ * Query params:
+ *   - redirect: if 'true', redirects to Last.fm directly instead of returning JSON
+ */
+router.get('/lastfm/auth', (req, res) => {
+  if (!lastfm || !lastfm.isConfigured()) {
+    return res.status(503).json({
+      error: 'Last.fm not configured',
+      message: 'Set LASTFM_API_KEY and LASTFM_API_SECRET in .env'
+    });
+  }
+
+  // Build callback URL based on request
+  const protocol = req.protocol;
+  const host = req.get('host');
+  const callbackUrl = `${protocol}://${host}/api/lastfm/callback`;
+
+  const authUrl = lastfm.getAuthUrl(callbackUrl);
+
+  // If redirect=true, send user directly to Last.fm
+  if (req.query.redirect === 'true') {
+    return res.redirect(authUrl);
+  }
+
+  res.json({ authUrl });
+});
+
+/**
+ * GET /api/lastfm/callback
+ * Handle Last.fm OAuth callback
+ * Query params:
+ *   - token: auth token from Last.fm
+ *   - redirect: URL to redirect to after auth (optional)
+ */
+router.get('/lastfm/callback', async (req, res) => {
+  const { token } = req.query;
+  const redirectUrl = req.query.redirect || '/';
+
+  if (!token) {
+    return res.status(400).send('Missing token parameter');
+  }
+
+  if (!lastfm || !lastfm.isConfigured()) {
+    return res.status(503).send('Last.fm not configured');
+  }
+
+  try {
+    const session = await lastfm.getSession(token);
+    lastfm.setSessionKey(session.key);
+
+    // Store session in database for persistence across restarts
+    db.setSetting('lastfm_session_key', session.key);
+    db.setSetting('lastfm_username', session.name);
+
+    console.log(`[Last.fm] Authenticated as: ${session.name}`);
+
+    // Redirect to frontend or show success page
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Last.fm Connected</title>
+        <meta http-equiv="refresh" content="2;url=${redirectUrl}">
+      </head>
+      <body style="font-family: sans-serif; text-align: center; padding: 50px;">
+        <h1>✓ Last.fm Connected</h1>
+        <p>Successfully authenticated as <strong>${session.name}</strong></p>
+        <p>Scrobbling is now enabled. Redirecting...</p>
+      </body>
+      </html>
+    `);
+  } catch (error) {
+    console.error('[Last.fm] Auth callback error:', error.message);
+    res.status(500).send(`
+      <!DOCTYPE html>
+      <html>
+      <head><title>Last.fm Error</title></head>
+      <body style="font-family: sans-serif; text-align: center; padding: 50px;">
+        <h1>✗ Authentication Failed</h1>
+        <p>Error: ${error.message}</p>
+        <p><a href="/api/lastfm/auth?redirect=true">Try again</a></p>
+      </body>
+      </html>
+    `);
+  }
+});
+
+/**
+ * POST /api/lastfm/disconnect
+ * Disconnect Last.fm (clear session)
+ */
+router.post('/lastfm/disconnect', (req, res) => {
+  if (lastfm) {
+    lastfm.setSessionKey(null);
+  }
+
+  // Clear from database
+  db.deleteSetting('lastfm_session_key');
+  db.deleteSetting('lastfm_username');
+
+  console.log('[Last.fm] Disconnected');
+  res.json({ success: true });
 });
 
 module.exports = router;

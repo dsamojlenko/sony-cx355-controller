@@ -4,7 +4,8 @@ import { NowPlaying } from '@/components/NowPlaying';
 import { DiscGrid } from '@/components/DiscGrid';
 import { DiscDetail } from '@/components/DiscDetail';
 import { StatsPage } from '@/components/StatsPage';
-import { Disc as DiscIcon, BarChart3 } from 'lucide-react';
+import { SettingsPage } from '@/components/SettingsPage';
+import { Disc as DiscIcon, BarChart3, Settings } from 'lucide-react';
 import type { Disc } from '@/types';
 
 function App() {
@@ -45,6 +46,10 @@ function App() {
               <BarChart3 className="w-4 h-4" />
               Stats
             </TabsTrigger>
+            <TabsTrigger value="settings" className="flex items-center gap-2">
+              <Settings className="w-4 h-4" />
+              Settings
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="browse">
@@ -53,6 +58,10 @@ function App() {
 
           <TabsContent value="stats">
             <StatsPage onDiscSelect={handleDiscSelect} />
+          </TabsContent>
+
+          <TabsContent value="settings">
+            <SettingsPage />
           </TabsContent>
         </Tabs>
       </main>

@@ -89,12 +89,31 @@ class MusicBrainzService {
       const mediaIndex = mediumPosition - 1;
       const medium = release.media && release.media[mediaIndex];
 
+      // Get the release-level artist for comparison
+      const releaseArtist = release['artist-credit'] && release['artist-credit'][0]
+        ? release['artist-credit'][0].name
+        : null;
+
       if (medium && medium.tracks) {
         medium.tracks.forEach((track, index) => {
+          // Extract track-level artist from the recording's artist-credit
+          let trackArtist = null;
+          if (track.recording && track.recording['artist-credit'] && track.recording['artist-credit'].length > 0) {
+            // Join all artist credits (handles "Artist A feat. Artist B" cases)
+            trackArtist = track.recording['artist-credit']
+              .map(credit => credit.name + (credit.joinphrase || ''))
+              .join('');
+          }
+
+          // Only store track artist if it differs from the release artist
+          // This keeps the data clean for non-compilation albums
+          const artistToStore = (trackArtist && trackArtist !== releaseArtist) ? trackArtist : null;
+
           tracks.push({
             track_number: index + 1,
             title: track.title,
-            duration_seconds: track.length ? Math.round(track.length / 1000) : null
+            duration_seconds: track.length ? Math.round(track.length / 1000) : null,
+            artist: artistToStore
           });
         });
       }

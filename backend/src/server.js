@@ -5,9 +5,46 @@ const cors = require('cors');
 const path = require('path');
 const os = require('os');
 const Bonjour = require('bonjour-service').Bonjour;
+require('dotenv').config();
+
 const apiRoutes = require('./routes/api');
+const DatabaseService = require('./services/database');
+const MusicBrainzService = require('./services/musicbrainz');
+const LastFmService = require('./services/lastfm');
+const ScrobbleManager = require('./services/scrobbleManager');
 
 const app = express();
+
+// Initialize services
+const db = new DatabaseService();
+const musicbrainz = new MusicBrainzService();
+
+// Initialize Last.fm service (optional - only if credentials configured)
+let lastfm = null;
+let scrobbleManager = null;
+
+if (process.env.LASTFM_API_KEY && process.env.LASTFM_API_SECRET) {
+  // Load session key from database (persists across restarts)
+  const savedSessionKey = db.getSetting('lastfm_session_key');
+  const savedUsername = db.getSetting('lastfm_username');
+
+  lastfm = new LastFmService(
+    process.env.LASTFM_API_KEY,
+    process.env.LASTFM_API_SECRET,
+    savedSessionKey
+  );
+
+  scrobbleManager = new ScrobbleManager(lastfm, db);
+  db.setScrobbleManager(scrobbleManager);
+
+  if (lastfm.isAuthenticated()) {
+    console.log(`[Last.fm] Service initialized (authenticated as ${savedUsername || 'unknown'})`);
+  } else {
+    console.log('[Last.fm] Service initialized (not authenticated - visit /api/lastfm/auth)');
+  }
+} else {
+  console.log('[Last.fm] Not configured (set LASTFM_API_KEY and LASTFM_API_SECRET in .env)');
+}
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
@@ -30,8 +67,11 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/covers', express.static(path.join(__dirname, '../public/covers')));
 app.use(express.static(path.join(__dirname, '../public')));
 
-// Make io available to routes
+// Make services available to routes
 app.set('io', io);
+app.set('db', db);
+app.set('musicbrainz', musicbrainz);
+app.set('lastfm', lastfm);
 
 // API routes
 app.use('/api', apiRoutes);
@@ -71,10 +111,7 @@ io.on('connection', (socket) => {
 
 // Periodic cleanup of old commands
 setInterval(() => {
-  const DatabaseService = require('./services/database');
-  const db = new DatabaseService();
   db.cleanupCommands();
-  db.close();
 }, 60000); // Every minute
 
 // Start server
@@ -116,8 +153,8 @@ ${addresses.map(a => `    - ${a}`).join('\n')}
 
   Endpoints:
   - GET    /api/discs
-  - GET    /api/discs/:position
-  - POST   /api/discs/:position
+  - GET    /api/discs/:player/:position
+  - POST   /api/discs/:player/:position
   - GET    /api/current
   - POST   /api/state (ESP32)
   - POST   /api/control/play
@@ -128,8 +165,12 @@ ${addresses.map(a => `    - ${a}`).join('\n')}
   - GET    /api/esp32/poll
   - POST   /api/esp32/ack
   - GET    /api/search/musicbrainz
-  - POST   /api/enrich/:position
+  - POST   /api/enrich/:player/:position
   - GET    /api/stats
+  - GET    /api/lastfm/status
+  - GET    /api/lastfm/auth
+  - GET    /api/lastfm/callback
+  - POST   /api/lastfm/disconnect
 
   ESP32 can discover this server via:
     - mDNS service: _cdjukebox._tcp

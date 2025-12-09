@@ -7,6 +7,14 @@ class DatabaseService {
   constructor() {
     this.schema = new DatabaseSchema();
     this.db = this.schema.init();
+    this.scrobbleManager = null;
+  }
+
+  /**
+   * Set the scrobble manager for Last.fm integration
+   */
+  setScrobbleManager(scrobbleManager) {
+    this.scrobbleManager = scrobbleManager;
   }
 
   /**
@@ -83,7 +91,7 @@ class DatabaseService {
     }
 
     const tracks = this.db.prepare(`
-      SELECT track_number, title, duration_seconds
+      SELECT track_number, title, duration_seconds, artist
       FROM tracks
       WHERE disc_id = ?
       ORDER BY track_number
@@ -105,7 +113,7 @@ class DatabaseService {
     }
 
     const tracks = this.db.prepare(`
-      SELECT track_number, title, duration_seconds
+      SELECT track_number, title, duration_seconds, artist
       FROM tracks
       WHERE disc_id = ?
       ORDER BY track_number
@@ -157,8 +165,8 @@ class DatabaseService {
   setTracks(discId, tracks) {
     const deleteTracks = this.db.prepare('DELETE FROM tracks WHERE disc_id = ?');
     const insertTrack = this.db.prepare(`
-      INSERT INTO tracks (disc_id, track_number, title, duration_seconds)
-      VALUES (?, ?, ?, ?)
+      INSERT INTO tracks (disc_id, track_number, title, duration_seconds, artist)
+      VALUES (?, ?, ?, ?, ?)
     `);
 
     const transaction = this.db.transaction((id, trackList) => {
@@ -168,7 +176,8 @@ class DatabaseService {
           id,
           track.track_number,
           track.title,
-          track.duration_seconds || null
+          track.duration_seconds || null,
+          track.artist || null
         );
       }
     });
@@ -235,6 +244,11 @@ class DatabaseService {
         this.recordTrackPlay(player, disc, track);
       }
     }
+
+    // Notify scrobble manager of stop/pause to cancel pending scrobbles
+    if (this.scrobbleManager && (state === 'stop' || state === 'pause')) {
+      this.scrobbleManager.onPlaybackStopped();
+    }
   }
 
   /**
@@ -255,6 +269,11 @@ class DatabaseService {
       this.db.prepare(`
         UPDATE discs SET last_played = CURRENT_TIMESTAMP WHERE id = ?
       `).run(discRecord.id);
+
+      // Notify scrobble manager (sends Now Playing + schedules scrobble)
+      if (this.scrobbleManager) {
+        this.scrobbleManager.onTrackStart(player, disc, track);
+      }
     }
   }
 
@@ -420,6 +439,43 @@ class DatabaseService {
       mostPlayedTracks,
       recentlyPlayed
     };
+  }
+
+  // ============================================
+  // Settings methods
+  // ============================================
+
+  /**
+   * Get a setting value
+   * @param {string} key - Setting key
+   * @returns {string|null} Setting value or null if not found
+   */
+  getSetting(key) {
+    const row = this.db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
+    return row ? row.value : null;
+  }
+
+  /**
+   * Set a setting value
+   * @param {string} key - Setting key
+   * @param {string} value - Setting value
+   */
+  setSetting(key, value) {
+    this.db.prepare(`
+      INSERT INTO settings (key, value, updated_at)
+      VALUES (?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(key) DO UPDATE SET
+        value = excluded.value,
+        updated_at = CURRENT_TIMESTAMP
+    `).run(key, value);
+  }
+
+  /**
+   * Delete a setting
+   * @param {string} key - Setting key
+   */
+  deleteSetting(key) {
+    this.db.prepare('DELETE FROM settings WHERE key = ?').run(key);
   }
 
   /**

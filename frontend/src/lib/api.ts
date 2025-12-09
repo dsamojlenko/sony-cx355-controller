@@ -7,6 +7,8 @@ import type {
   CommandResponse,
   PlayerFilter,
   MusicBrainzRelease,
+  LastFmStatus,
+  LastFmAuthResponse,
 } from '@/types';
 
 const API_BASE = '/api';
@@ -142,4 +144,19 @@ export async function lookupMusicBrainzRelease(
   mbid: string
 ): Promise<MusicBrainzRelease> {
   return fetchJson<MusicBrainzRelease>(`${API_BASE}/musicbrainz/release/${mbid}`);
+}
+
+// Last.fm
+export async function getLastFmStatus(): Promise<LastFmStatus> {
+  return fetchJson<LastFmStatus>(`${API_BASE}/lastfm/status`);
+}
+
+export async function getLastFmAuthUrl(): Promise<LastFmAuthResponse> {
+  return fetchJson<LastFmAuthResponse>(`${API_BASE}/lastfm/auth`);
+}
+
+export async function disconnectLastFm(): Promise<{ success: boolean }> {
+  return fetchJson<{ success: boolean }>(`${API_BASE}/lastfm/disconnect`, {
+    method: 'POST',
+  });
 }

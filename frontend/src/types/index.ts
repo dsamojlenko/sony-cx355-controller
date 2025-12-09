@@ -111,3 +111,14 @@ export interface MusicBrainzRelease {
   mediaCount: number;
   coverArtUrl: string;
 }
+
+export interface LastFmStatus {
+  configured: boolean;
+  authenticated: boolean;
+  username?: string | null;
+  message?: string;
+}
+
+export interface LastFmAuthResponse {
+  authUrl: string;
+}
