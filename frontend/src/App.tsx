@@ -5,12 +5,30 @@ import { DiscGrid } from '@/components/DiscGrid';
 import { DiscDetail } from '@/components/DiscDetail';
 import { StatsPage } from '@/components/StatsPage';
 import { SettingsPage } from '@/components/SettingsPage';
-import { Disc as DiscIcon, BarChart3, Settings } from 'lucide-react';
+import { Screensaver } from '@/components/Screensaver';
+import { useIdleDetection } from '@/hooks/useIdleDetection';
+import { useScreensaverSettings } from '@/hooks/useScreensaverSettings';
+import { Button } from '@/components/ui/button';
+import { Disc as DiscIcon, BarChart3, Settings, Monitor } from 'lucide-react';
 import type { Disc } from '@/types';
 
 function App() {
   const [selectedDisc, setSelectedDisc] = useState<Disc | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [manualScreensaver, setManualScreensaver] = useState(false);
+
+  const { settings } = useScreensaverSettings();
+  const { isIdle, resetIdle } = useIdleDetection({
+    timeoutMinutes: settings.idleTimeoutMinutes,
+    enabled: settings.enabled,
+  });
+
+  const screensaverActive = isIdle || manualScreensaver;
+
+  const handleScreensaverExit = () => {
+    resetIdle();
+    setManualScreensaver(false);
+  };
 
   // Apply dark mode by default
   useEffect(() => {
@@ -26,11 +44,19 @@ function App() {
     <div className="min-h-screen bg-background pb-24">
       {/* Header */}
       <header className="sticky top-0 z-40 bg-background/95 backdrop-blur border-b border-border">
-        <div className="max-w-7xl mx-auto px-4 py-4">
+        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
           <h1 className="text-xl font-bold flex items-center gap-2">
             <DiscIcon className="w-6 h-6" />
             CD Jukebox
           </h1>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setManualScreensaver(true)}
+            title="Start screensaver"
+          >
+            <Monitor className="w-5 h-5" />
+          </Button>
         </div>
       </header>
 
@@ -74,6 +100,13 @@ function App() {
         disc={selectedDisc}
         open={detailOpen}
         onClose={() => setDetailOpen(false)}
+      />
+
+      {/* Screensaver */}
+      <Screensaver
+        isActive={screensaverActive}
+        onExit={handleScreensaverExit}
+        animationStyle={settings.animationStyle}
       />
     </div>
   );

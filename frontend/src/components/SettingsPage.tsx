@@ -1,16 +1,91 @@
 import { useLastFmStatus, useLastFmConnect, useLastFmDisconnect } from '@/hooks/useLastFm';
+import { useScreensaverSettings, type AnimationStyle } from '@/hooks/useScreensaverSettings';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ExternalLink, Check, X, AlertCircle } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { Slider } from '@/components/ui/slider';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ExternalLink, Check, X, AlertCircle, Monitor } from 'lucide-react';
 
 export function SettingsPage() {
   const { data: status, isLoading, error } = useLastFmStatus();
   const connectMutation = useLastFmConnect();
   const disconnectMutation = useLastFmDisconnect();
+  const { settings: screensaverSettings, updateSettings: updateScreensaverSettings } = useScreensaverSettings();
 
   return (
     <div className="space-y-6">
+      {/* Screensaver Settings */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Monitor className="w-5 h-5" />
+            Screensaver
+          </CardTitle>
+          <CardDescription>
+            Configure the screensaver that displays album covers when idle
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Enable/Disable */}
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label htmlFor="screensaver-enabled">Auto-start screensaver</Label>
+              <p className="text-sm text-muted-foreground">
+                Automatically start the screensaver after being idle
+              </p>
+            </div>
+            <Switch
+              id="screensaver-enabled"
+              checked={screensaverSettings.enabled}
+              onCheckedChange={(checked) => updateScreensaverSettings({ enabled: checked })}
+            />
+          </div>
+
+          {/* Idle Timeout */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label>Idle timeout</Label>
+              <span className="text-sm text-muted-foreground">
+                {screensaverSettings.idleTimeoutMinutes} minute{screensaverSettings.idleTimeoutMinutes !== 1 ? 's' : ''}
+              </span>
+            </div>
+            <Slider
+              value={[screensaverSettings.idleTimeoutMinutes]}
+              onValueChange={([value]) => updateScreensaverSettings({ idleTimeoutMinutes: value })}
+              min={1}
+              max={30}
+              step={1}
+              disabled={!screensaverSettings.enabled}
+            />
+            <p className="text-sm text-muted-foreground">
+              Time of inactivity before the screensaver starts
+            </p>
+          </div>
+
+          {/* Animation Style */}
+          <div className="space-y-2">
+            <Label>Animation style</Label>
+            <Select
+              value={screensaverSettings.animationStyle}
+              onValueChange={(value: AnimationStyle) => updateScreensaverSettings({ animationStyle: value })}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="floating">Floating - Album covers drift across the screen</SelectItem>
+                <SelectItem value="kenburns">Ken Burns - Slow zoom and pan on each cover</SelectItem>
+                <SelectItem value="mosaic">Mosaic - Grid of covers that shuffle</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Last.fm Settings */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
