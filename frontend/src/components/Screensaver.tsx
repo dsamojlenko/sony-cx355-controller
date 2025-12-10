@@ -350,26 +350,32 @@ function MosaicAnimation({
   const gridSize = 5; // 5x5 grid
 
   return (
-    <div
-      className="absolute inset-0 grid gap-1 p-1"
-      style={{
-        gridTemplateColumns: `repeat(${gridSize}, 1fr)`,
-        gridTemplateRows: `repeat(${gridSize}, 1fr)`,
-      }}
-    >
-      {covers.slice(0, gridSize * gridSize).map((disc, i) => (
-        <div
-          key={`mosaic-${i}`}
-          className={`relative overflow-hidden ${reducedMotion ? '' : 'transition-opacity duration-500'}`}
-        >
-          <img
-            src={getCoverUrl(disc.cover_art_path)}
-            alt={disc.album}
-            className="w-full h-full object-cover"
-            loading="lazy"
-          />
-        </div>
-      ))}
+    <div className="absolute inset-0 flex items-center justify-center bg-black">
+      <div
+        className="grid gap-1"
+        style={{
+          // Use viewport height to determine tile size for square tiles
+          gridTemplateColumns: `repeat(${gridSize}, minmax(0, 1fr))`,
+          gridTemplateRows: `repeat(${gridSize}, minmax(0, 1fr))`,
+          // Make the grid square based on the smaller viewport dimension
+          width: `min(100vw, 100vh)`,
+          height: `min(100vw, 100vh)`,
+        }}
+      >
+        {covers.slice(0, gridSize * gridSize).map((disc, i) => (
+          <div
+            key={`mosaic-${i}`}
+            className={`relative overflow-hidden aspect-square ${reducedMotion ? '' : 'transition-opacity duration-500'}`}
+          >
+            <img
+              src={getCoverUrl(disc.cover_art_path)}
+              alt={disc.album}
+              className="w-full h-full object-cover"
+              loading="lazy"
+            />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

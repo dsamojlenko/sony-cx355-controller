@@ -145,14 +145,15 @@ class MusicBrainzService {
    * @param {string} releaseId - MusicBrainz release ID
    * @param {number} player - Player number (1 or 2)
    * @param {number} position - Disc position (1-300)
+   * @param {boolean} forceDownload - If true, re-download even if file exists
    */
-  async downloadCoverArt(releaseId, player, position) {
+  async downloadCoverArt(releaseId, player, position, forceDownload = false) {
     try {
       const filename = `p${player}-${position}.jpg`;
       const coverPath = path.join(this.coverDir, filename);
 
-      // Check if cover already exists
-      if (fs.existsSync(coverPath)) {
+      // Check if cover already exists (skip if forcing re-download)
+      if (!forceDownload && fs.existsSync(coverPath)) {
         console.log(`Cover art already exists for P${player}-${position}`);
         return `/covers/${filename}`;
       }
@@ -213,9 +214,10 @@ class MusicBrainzService {
       console.log(`[MusicBrainz] Fetching release details for ${mbid} (disc ${mediumPosition})...`);
       const metadata = await this.getRelease(mbid, mediumPosition);
 
-      // Download cover art
-      console.log(`[MusicBrainz] Downloading cover art...`);
-      const coverArtPath = await this.downloadCoverArt(mbid, player, position);
+      // Download cover art (force re-download if a specific releaseId was provided, i.e. "fix match")
+      const forceDownload = releaseId !== null;
+      console.log(`[MusicBrainz] Downloading cover art${forceDownload ? ' (forcing re-download)' : ''}...`);
+      const coverArtPath = await this.downloadCoverArt(mbid, player, position, forceDownload);
 
       return {
         ...metadata,
