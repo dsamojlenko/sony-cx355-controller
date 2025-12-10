@@ -14,12 +14,23 @@ export function DiscCard({ disc, onClick, isPlaying }: DiscCardProps) {
   // Check if disc needs enrichment (missing MusicBrainz data)
   const needsEnrichment = !disc.musicbrainz_id || !disc.track_count;
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onClick?.();
+    }
+  };
+
   return (
     <Card
-      className={`cursor-pointer transition-all hover:bg-accent/50 ${
+      className={`cursor-pointer transition-all hover:bg-accent/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
         isPlaying ? 'ring-2 ring-primary' : ''
       }`}
       onClick={onClick}
+      onKeyDown={handleKeyDown}
+      tabIndex={0}
+      role="button"
+      aria-label={`${disc.artist} - ${disc.album}, Player ${disc.player} position ${disc.position}`}
     >
       <CardContent className="p-3">
         {/* Cover Art */}

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { NowPlaying } from '@/components/NowPlaying';
 import { DiscGrid } from '@/components/DiscGrid';
@@ -16,6 +16,7 @@ function App() {
   const [selectedDisc, setSelectedDisc] = useState<Disc | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [manualScreensaver, setManualScreensaver] = useState(false);
+  const triggerRef = useRef<HTMLElement | null>(null);
 
   const { settings } = useScreensaverSettings();
   const { isIdle, resetIdle } = useIdleDetection({
@@ -36,8 +37,19 @@ function App() {
   }, []);
 
   const handleDiscSelect = (disc: Disc) => {
+    // Store the element that triggered the modal so we can restore focus
+    triggerRef.current = document.activeElement as HTMLElement;
     setSelectedDisc(disc);
     setDetailOpen(true);
+  };
+
+  const handleDetailClose = () => {
+    setDetailOpen(false);
+    // Restore focus to the element that opened the modal
+    requestAnimationFrame(() => {
+      triggerRef.current?.focus();
+      triggerRef.current = null;
+    });
   };
 
   return (
@@ -99,7 +111,7 @@ function App() {
       <DiscDetail
         disc={selectedDisc}
         open={detailOpen}
-        onClose={() => setDetailOpen(false)}
+        onClose={handleDetailClose}
       />
 
       {/* Screensaver */}

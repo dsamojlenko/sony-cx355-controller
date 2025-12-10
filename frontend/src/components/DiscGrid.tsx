@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useCallback } from 'react';
 import { useDiscs } from '@/hooks/useDiscs';
 import { usePlaybackState } from '@/hooks/usePlaybackState';
 import { DiscCard } from './DiscCard';
@@ -26,6 +26,60 @@ export function DiscGrid({ onDiscSelect }: DiscGridProps) {
   });
 
   const { state: playbackState } = usePlaybackState();
+  const gridRef = useRef<HTMLDivElement>(null);
+
+  // Get number of columns based on current grid layout
+  const getColumnCount = useCallback(() => {
+    if (!gridRef.current) return 1;
+    const gridStyle = window.getComputedStyle(gridRef.current);
+    const columns = gridStyle.getPropertyValue('grid-template-columns').split(' ').length;
+    return columns;
+  }, []);
+
+  const handleGridKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (!gridRef.current || !data?.discs.length) return;
+
+    const focusableCards = Array.from(
+      gridRef.current.querySelectorAll('[role="button"][tabindex="0"]')
+    ) as HTMLElement[];
+
+    const currentIndex = focusableCards.findIndex(
+      (card) => card === document.activeElement
+    );
+
+    if (currentIndex === -1) return;
+
+    const columns = getColumnCount();
+    let nextIndex = currentIndex;
+
+    switch (e.key) {
+      case 'ArrowRight':
+        nextIndex = Math.min(currentIndex + 1, focusableCards.length - 1);
+        break;
+      case 'ArrowLeft':
+        nextIndex = Math.max(currentIndex - 1, 0);
+        break;
+      case 'ArrowDown':
+        nextIndex = Math.min(currentIndex + columns, focusableCards.length - 1);
+        break;
+      case 'ArrowUp':
+        nextIndex = Math.max(currentIndex - columns, 0);
+        break;
+      case 'Home':
+        nextIndex = 0;
+        break;
+      case 'End':
+        nextIndex = focusableCards.length - 1;
+        break;
+      default:
+        return;
+    }
+
+    if (nextIndex !== currentIndex) {
+      e.preventDefault();
+      focusableCards[nextIndex]?.focus();
+    }
+  }, [data?.discs.length, getColumnCount]);
 
   const totalPages = useMemo(() => {
     if (!data?.total) return 0;
@@ -123,7 +177,13 @@ export function DiscGrid({ onDiscSelect }: DiscGridProps) {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+          <div
+            ref={gridRef}
+            className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4"
+            onKeyDown={handleGridKeyDown}
+            role="grid"
+            aria-label="Disc collection"
+          >
             {data?.discs.map((disc) => (
               <DiscCard
                 key={`${disc.player}-${disc.position}`}
