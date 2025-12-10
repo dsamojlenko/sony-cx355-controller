@@ -8,28 +8,25 @@ interface UseIdleDetectionOptions {
 export function useIdleDetection({ timeoutMinutes, enabled = true }: UseIdleDetectionOptions) {
   const [isIdle, setIsIdle] = useState(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastActivityRef = useRef<number>(Date.now());
+  const throttleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const resetIdle = useCallback(() => {
     setIsIdle(false);
-    lastActivityRef.current = Date.now();
   }, []);
 
   useEffect(() => {
     if (!enabled) {
       setIsIdle(false);
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
       return;
     }
 
     const timeoutMs = timeoutMinutes * 60 * 1000;
 
-    const handleActivity = () => {
-      lastActivityRef.current = Date.now();
-
-      if (isIdle) {
-        setIsIdle(false);
-      }
-
+    const startIdleTimer = () => {
       // Clear existing timeout
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
@@ -41,15 +38,22 @@ export function useIdleDetection({ timeoutMinutes, enabled = true }: UseIdleDete
       }, timeoutMs);
     };
 
+    const handleActivity = () => {
+      // Reset idle state if currently idle
+      setIsIdle(false);
+
+      // Restart the idle timer
+      startIdleTimer();
+    };
+
     // Throttle function to limit event handler calls
-    let throttleTimeout: ReturnType<typeof setTimeout> | null = null;
     const throttledHandleActivity = () => {
-      if (throttleTimeout) return;
+      if (throttleTimeoutRef.current) return;
 
       handleActivity();
 
-      throttleTimeout = setTimeout(() => {
-        throttleTimeout = null;
+      throttleTimeoutRef.current = setTimeout(() => {
+        throttleTimeoutRef.current = null;
       }, 200); // Throttle to max once per 200ms
     };
 
@@ -62,7 +66,7 @@ export function useIdleDetection({ timeoutMinutes, enabled = true }: UseIdleDete
     });
 
     // Start initial timeout
-    handleActivity();
+    startIdleTimer();
 
     return () => {
       // Remove event listeners
@@ -74,11 +78,11 @@ export function useIdleDetection({ timeoutMinutes, enabled = true }: UseIdleDete
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
       }
-      if (throttleTimeout) {
-        clearTimeout(throttleTimeout);
+      if (throttleTimeoutRef.current) {
+        clearTimeout(throttleTimeoutRef.current);
       }
     };
-  }, [timeoutMinutes, enabled, isIdle]);
+  }, [timeoutMinutes, enabled]);
 
   return { isIdle, resetIdle };
 }
