@@ -73,7 +73,7 @@ class MusicBrainzService {
     try {
       const response = await axios.get(`${this.baseURL}/release/${releaseId}`, {
         params: {
-          inc: 'recordings+artist-credits+labels',
+          inc: 'recordings+artist-credits+labels+genres+tags',
           fmt: 'json'
         },
         headers: {
@@ -118,6 +118,23 @@ class MusicBrainzService {
         });
       }
 
+      // Extract genres from tags (MusicBrainz uses "genres" for official genres)
+      // Fall back to user-submitted "tags" if no genres available
+      let genres = [];
+      if (release.genres && release.genres.length > 0) {
+        // Sort by count (vote count) descending, take top genres
+        genres = release.genres
+          .sort((a, b) => (b.count || 0) - (a.count || 0))
+          .slice(0, 3)
+          .map(g => g.name);
+      } else if (release.tags && release.tags.length > 0) {
+        // Fallback to tags if no official genres
+        genres = release.tags
+          .sort((a, b) => (b.count || 0) - (a.count || 0))
+          .slice(0, 3)
+          .map(t => t.name);
+      }
+
       // Extract relevant metadata
       const metadata = {
         musicbrainz_id: release.id,
@@ -126,6 +143,7 @@ class MusicBrainzService {
           : null,
         album: release.title,
         year: release.date ? parseInt(release.date.split('-')[0]) : null,
+        genre: genres.length > 0 ? genres.join(', ') : null,
         track_count: tracks.length,
         duration_seconds: tracks.reduce((sum, t) => sum + (t.duration_seconds || 0), 0),
         medium_position: mediumPosition,

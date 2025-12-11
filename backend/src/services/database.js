@@ -430,6 +430,9 @@ class DatabaseService {
       LIMIT 10
     `).all();
 
+    // Get genre statistics
+    const genreStats = this.getGenreStats();
+
     return {
       totalDiscs,
       player1Discs,
@@ -437,7 +440,65 @@ class DatabaseService {
       totalTrackPlays,
       mostPlayedAlbums,
       mostPlayedTracks,
-      recentlyPlayed
+      recentlyPlayed,
+      genreStats
+    };
+  }
+
+  /**
+   * Get genre statistics
+   */
+  getGenreStats() {
+    // Count discs by genre (splitting comma-separated genres)
+    const discsWithGenre = this.db.prepare(`
+      SELECT genre FROM discs WHERE genre IS NOT NULL AND genre != ''
+    `).all();
+
+    // Parse and count individual genres
+    const genreCounts = {};
+    for (const disc of discsWithGenre) {
+      const genres = disc.genre.split(',').map(g => g.trim().toLowerCase());
+      for (const genre of genres) {
+        if (genre) {
+          genreCounts[genre] = (genreCounts[genre] || 0) + 1;
+        }
+      }
+    }
+
+    // Sort by count descending
+    const genreDistribution = Object.entries(genreCounts)
+      .map(([genre, count]) => ({ genre, count }))
+      .sort((a, b) => b.count - a.count);
+
+    // Get most played genres (by track plays)
+    const discsWithPlays = this.db.prepare(`
+      SELECT d.genre, COUNT(tp.id) as play_count
+      FROM discs d
+      JOIN track_plays tp ON d.id = tp.disc_id
+      WHERE d.genre IS NOT NULL AND d.genre != ''
+      GROUP BY d.id
+    `).all();
+
+    const genrePlayCounts = {};
+    for (const disc of discsWithPlays) {
+      const genres = disc.genre.split(',').map(g => g.trim().toLowerCase());
+      for (const genre of genres) {
+        if (genre) {
+          genrePlayCounts[genre] = (genrePlayCounts[genre] || 0) + disc.play_count;
+        }
+      }
+    }
+
+    const mostPlayedGenres = Object.entries(genrePlayCounts)
+      .map(([genre, playCount]) => ({ genre, playCount }))
+      .sort((a, b) => b.playCount - a.playCount)
+      .slice(0, 10);
+
+    return {
+      totalWithGenre: discsWithGenre.length,
+      uniqueGenres: genreDistribution.length,
+      genreDistribution,
+      mostPlayedGenres
     };
   }
 
