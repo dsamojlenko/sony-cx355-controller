@@ -1,5 +1,6 @@
 import { usePlaybackState } from '@/hooks/usePlaybackState';
 import { useTransportControls } from '@/hooks/useCommands';
+import { useTrackTimer } from '@/hooks/useTrackTimer';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -27,6 +28,7 @@ function formatDuration(seconds?: number): string {
 export function NowPlaying({ onDiscClick }: NowPlayingProps) {
   const { state, isLoading } = usePlaybackState();
   const controls = useTransportControls();
+  const { elapsedSeconds, remainingSeconds } = useTrackTimer(state);
 
   if (isLoading) {
     return (
@@ -64,9 +66,23 @@ export function NowPlaying({ onDiscClick }: NowPlayingProps) {
     }
   };
 
+  // Calculate progress percentage
+  const progressPercent = state?.track_duration
+    ? Math.min(100, (elapsedSeconds / state.track_duration) * 100)
+    : 0;
+
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-card border-t border-border p-4 z-50">
-      <div className="max-w-7xl mx-auto flex items-center gap-4">
+    <div className="fixed bottom-0 left-0 right-0 bg-card border-t border-border z-50">
+      {/* Progress bar */}
+      {state?.track_duration && hasDisc && (
+        <div className="h-1 bg-muted">
+          <div
+            className="h-full bg-primary transition-all duration-1000 ease-linear"
+            style={{ width: `${progressPercent}%` }}
+          />
+        </div>
+      )}
+      <div className="max-w-7xl mx-auto flex items-center gap-4 p-4">
         {/* Cover Art & Track Info - Clickable */}
         <button
           onClick={handleDiscClick}
@@ -101,7 +117,19 @@ export function NowPlaying({ onDiscClick }: NowPlayingProps) {
                 </div>
                 <div className="text-xs text-muted-foreground">
                   Player {state?.current_player} · Disc {state?.current_disc}
-                  {state?.track_duration ? ` · ${formatDuration(state.track_duration)}` : ''}
+                  {state?.track_duration ? (
+                    <>
+                      {' · '}
+                      <span className="tabular-nums">
+                        {formatDuration(elapsedSeconds)} / {formatDuration(state.track_duration)}
+                      </span>
+                      {remainingSeconds !== null && remainingSeconds > 0 && (
+                        <span className="text-muted-foreground/70">
+                          {' '}(-{formatDuration(remainingSeconds)})
+                        </span>
+                      )}
+                    </>
+                  ) : ''}
                 </div>
               </>
             ) : (

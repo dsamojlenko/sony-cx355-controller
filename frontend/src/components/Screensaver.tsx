@@ -3,8 +3,9 @@ import { useQuery } from '@tanstack/react-query';
 import { getDiscs } from '@/lib/api';
 import { getCoverUrl } from '@/lib/utils';
 import { usePlaybackState } from '@/hooks/usePlaybackState';
+import { useTrackTimer } from '@/hooks/useTrackTimer';
 import type { AnimationStyle } from '@/hooks/useScreensaverSettings';
-import type { Disc } from '@/types';
+import type { Disc, PlaybackState } from '@/types';
 
 interface ScreensaverProps {
   isActive: boolean;
@@ -380,12 +381,21 @@ function MosaicAnimation({
   );
 }
 
+function formatDuration(seconds?: number): string {
+  if (seconds == null) return '--:--';
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
 // Now Playing Display
 function NowPlayingDisplay({
   playbackState,
 }: {
-  playbackState: NonNullable<ReturnType<typeof usePlaybackState>['state']>;
+  playbackState: PlaybackState;
 }) {
+  const { elapsedSeconds } = useTrackTimer(playbackState);
+
   return (
     <div className="flex flex-col items-center gap-8 animate-in fade-in duration-1000">
       {/* "Now Playing" banner */}
@@ -415,6 +425,11 @@ function NowPlayingDisplay({
           {playbackState.album}
           {playbackState.year ? ` (${playbackState.year})` : ''}
         </p>
+        {playbackState.track_duration && (
+          <p className="text-white/50 text-base tabular-nums">
+            {formatDuration(elapsedSeconds)} / {formatDuration(playbackState.track_duration)}
+          </p>
+        )}
       </div>
     </div>
   );
