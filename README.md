@@ -129,9 +129,9 @@ open http://localhost:3000/covers/p1-125.jpg
 - [x] MusicBrainz auto-enrichment
 - [x] Cover art download
 - [x] Multi-player support
+- [x] Web UI for browsing and control
 
 **Planned:**
-- [x] Web UI for browsing and control
 - [ ] Physical display on ESP32
 - [ ] Disc management UI
 - [ ] Playlist support
