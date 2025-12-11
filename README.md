@@ -1,6 +1,6 @@
 # Sony CX355 CD Jukebox System
 
-A complete jukebox system for two Sony CDP‑CX355 300-disc CD changers (600 CDs total), featuring ESP32 S-Link interface, Node.js backend with automatic MusicBrainz metadata enrichment.
+A complete jukebox system for one or more Sony CDP‑CX355 CD changers, featuring ESP32 S-Link interface, Node.js backend with automatic MusicBrainz metadata enrichment, and an elegant easy-to-use user interface.
 
 <img width="1291" height="1131" alt="image" src="https://github.com/user-attachments/assets/42eb943c-23e6-4e5c-a65a-31a6b13cb5f8" />
 
