@@ -85,7 +85,7 @@ export function DiscDetail({ disc, open, onClose }: DiscDetailProps) {
   return (
     <>
       <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
+        <DialogContent className="max-w-2xl max-h-[90vh] grid! grid-rows-[auto_1fr]! overflow-hidden">
           <DialogHeader>
             <DialogTitle className="sr-only">
               {disc?.artist} - {disc?.album}
@@ -109,10 +109,10 @@ export function DiscDetail({ disc, open, onClose }: DiscDetailProps) {
               </div>
             </div>
           ) : discWithTracks ? (
-            <>
+            <div className="flex flex-col min-h-0 overflow-hidden">
               {/* Missing metadata warning */}
               {needsEnrichment && (
-                <div className="flex items-center gap-2 p-3 mb-4 rounded bg-yellow-500/10 border border-yellow-500/20 text-yellow-600 dark:text-yellow-400">
+                <div className="flex items-center gap-2 p-3 mb-4 rounded bg-yellow-500/10 border border-yellow-500/20 text-yellow-600 dark:text-yellow-400 shrink-0">
                   <AlertCircle className="w-4 h-4 shrink-0" />
                   <span className="text-sm">
                     This disc is missing metadata.
@@ -130,7 +130,7 @@ export function DiscDetail({ disc, open, onClose }: DiscDetailProps) {
               )}
 
               {/* Header with cover and info */}
-              <div className="flex gap-4 mb-4">
+              <div className="flex gap-4 mb-4 shrink-0">
                 {/* Cover Art */}
                 <div className="w-40 h-40 rounded bg-muted shrink-0 overflow-hidden">
                   <img
@@ -189,7 +189,7 @@ export function DiscDetail({ disc, open, onClose }: DiscDetailProps) {
               </div>
 
               {/* Track list */}
-              <ScrollArea className="flex-1 -mx-6 px-6">
+              <ScrollArea className="flex-1 min-h-0 -mx-6 px-6">
                 {discWithTracks.tracks.length > 0 ? (
                   <div className="space-y-1">
                     {discWithTracks.tracks.map((track) => {
@@ -236,7 +236,7 @@ export function DiscDetail({ disc, open, onClose }: DiscDetailProps) {
                   </div>
                 )}
               </ScrollArea>
-            </>
+            </div>
           ) : null}
         </DialogContent>
       </Dialog>
