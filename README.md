@@ -1,6 +1,6 @@
 # Sony CX355 CD Jukebox System
 
-A complete jukebox system for one or more Sony CDP‑CX355 CD changers, featuring ESP32 S-Link interface, Node.js backend with automatic MusicBrainz metadata enrichment, and an elegant easy-to-use user interface.
+A complete jukebox system for one or more Sony CDP‑CX355 CD changers, featuring an ESP32 S-Link interface, Node.js backend with automatic MusicBrainz metadata enrichment, and a web-based UI for browsing and playback control.
 
 <img width="1291" height="1131" alt="image" src="https://github.com/user-attachments/assets/42eb943c-23e6-4e5c-a65a-31a6b13cb5f8" />
 
@@ -63,7 +63,7 @@ See [CONTEXT.md](CONTEXT.md) for S-Link protocol details.
 | Backend API | ✅ Complete (REST endpoints, command queue) |
 | MusicBrainz enrichment | ✅ Complete (auto-fetch on first access) |
 | Cover art | ✅ Complete (from Cover Art Archive) |
-| Web UI | 🚧 Planned |
+| Web UI | ✅ Complete (browse, search, playback control) |
 
 ## Hardware
 
@@ -131,7 +131,7 @@ open http://localhost:3000/covers/p1-125.jpg
 - [x] Multi-player support
 
 **Planned:**
-- [ ] Web UI for browsing and control
+- [x] Web UI for browsing and control
 - [ ] Physical display on ESP32
 - [ ] Disc management UI
 - [ ] Playlist support
