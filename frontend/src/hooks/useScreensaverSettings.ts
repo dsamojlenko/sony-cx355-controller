@@ -1,6 +1,6 @@
 import { useCallback, useSyncExternalStore } from 'react';
 
-export type AnimationStyle = 'floating' | 'kenburns' | 'mosaic';
+export type AnimationStyle = 'floating' | 'kenburns' | 'mosaic' | 'slidepuzzle';
 
 export interface ScreensaverSettings {
   enabled: boolean;

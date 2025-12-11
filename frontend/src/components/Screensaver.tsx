@@ -73,10 +73,32 @@ export function Screensaver({ isActive, onExit, animationStyle }: ScreensaverPro
   // Mosaic state
   const [mosaicCovers, setMosaicCovers] = useState<Disc[]>([]);
 
+  // Slide puzzle state - maps tile ID to its current grid position
+  // tilePositions[i] = position in grid for tile i (tile 24 is the empty space)
+  const [tilePositions, setTilePositions] = useState<number[]>([]);
+  // Track which disc each tile shows (allows changing covers via flip)
+  const [tileDiscs, setTileDiscs] = useState<Disc[]>([]);
+  // Track which tiles are currently flipping and what they're flipping to
+  const [flippingTiles, setFlippingTiles] = useState<Map<number, Disc>>(new Map());
+  // Track last move direction: 'horizontal' or 'vertical'
+  const lastMoveDirectionRef = useRef<'horizontal' | 'vertical' | null>(null);
+
   // Initialize mosaic
   useEffect(() => {
     if (animationStyle === 'mosaic' && coversToShow.length > 0) {
       setMosaicCovers(coversToShow.slice(0, 25));
+    }
+  }, [animationStyle, coversToShow]);
+
+  // Initialize slide puzzle - each tile starts at its own index position
+  useEffect(() => {
+    if (animationStyle === 'slidepuzzle' && coversToShow.length >= 24) {
+      // Initialize: tile 0 at position 0, tile 1 at position 1, etc.
+      // Tile 24 is the "empty" tile
+      setTilePositions(Array.from({ length: 25 }, (_, i) => i));
+      // Initialize tile discs with first 24 covers
+      setTileDiscs(coversToShow.slice(0, 24));
+      setFlippingTiles(new Map());
     }
   }, [animationStyle, coversToShow]);
 
@@ -115,6 +137,178 @@ export function Screensaver({ isActive, onExit, animationStyle }: ScreensaverPro
 
     return () => clearInterval(interval);
   }, [isActive, animationStyle, coversToShow]);
+
+  // Slide puzzle animation
+  useEffect(() => {
+    if (!isActive || animationStyle !== 'slidepuzzle' || tilePositions.length < 25) return;
+
+    const gridSize = 5;
+
+    // Get valid moves categorized by direction
+    const getValidMoves = (emptyPos: number): { horizontal: number[]; vertical: number[] } => {
+      const row = Math.floor(emptyPos / gridSize);
+      const col = emptyPos % gridSize;
+      const horizontal: number[] = [];
+      const vertical: number[] = [];
+
+      // Tile above can move down into empty (vertical)
+      if (row > 0) vertical.push(emptyPos - gridSize);
+      // Tile below can move up into empty (vertical)
+      if (row < gridSize - 1) vertical.push(emptyPos + gridSize);
+      // Tile to the left can move right into empty (horizontal)
+      if (col > 0) horizontal.push(emptyPos - 1);
+      // Tile to the right can move left into empty (horizontal)
+      if (col < gridSize - 1) horizontal.push(emptyPos + 1);
+
+      return { horizontal, vertical };
+    };
+
+    const interval = setInterval(() => {
+      setTilePositions(prev => {
+        const newPositions = [...prev];
+        const emptyPos = prev[24];
+        const { horizontal, vertical } = getValidMoves(emptyPos);
+
+        // Prefer perpendicular direction to last move
+        let preferredMoves: number[];
+        let newDirection: 'horizontal' | 'vertical';
+
+        if (lastMoveDirectionRef.current === 'horizontal' && vertical.length > 0) {
+          // Last was horizontal, prefer vertical
+          preferredMoves = vertical;
+          newDirection = 'vertical';
+        } else if (lastMoveDirectionRef.current === 'vertical' && horizontal.length > 0) {
+          // Last was vertical, prefer horizontal
+          preferredMoves = horizontal;
+          newDirection = 'horizontal';
+        } else {
+          // No preference or preferred direction not available - pick randomly
+          const allMoves = [...horizontal, ...vertical];
+          preferredMoves = allMoves;
+          // Determine direction based on what we pick
+          const targetPos = allMoves[Math.floor(Math.random() * allMoves.length)];
+          newDirection = horizontal.includes(targetPos) ? 'horizontal' : 'vertical';
+
+          // Pick from preferred and update direction
+          const finalTarget = preferredMoves[Math.floor(Math.random() * preferredMoves.length)];
+          const tileAtTarget = prev.findIndex(pos => pos === finalTarget);
+          newPositions[tileAtTarget] = emptyPos;
+          newPositions[24] = finalTarget;
+          lastMoveDirectionRef.current = horizontal.includes(finalTarget) ? 'horizontal' : 'vertical';
+          return newPositions;
+        }
+
+        const targetPos = preferredMoves[Math.floor(Math.random() * preferredMoves.length)];
+        const tileAtTarget = prev.findIndex(pos => pos === targetPos);
+
+        newPositions[tileAtTarget] = emptyPos;
+        newPositions[24] = targetPos;
+        lastMoveDirectionRef.current = newDirection;
+
+        return newPositions;
+      });
+    }, 1500); // Move a tile every 1.5 seconds
+
+    return () => clearInterval(interval);
+  }, [isActive, animationStyle, tilePositions.length]);
+
+  // Slide puzzle tile flip effect - periodically flip tiles to show new covers
+  useEffect(() => {
+    if (!isActive || animationStyle !== 'slidepuzzle' || tileDiscs.length < 24 || coversToShow.length < 30) return;
+
+    const gridSize = 5;
+
+    // Different flip patterns with their probabilities
+    const getFlipPattern = (): number[] => {
+      const roll = Math.random();
+
+      // Single tile (40%)
+      if (roll < 0.40) {
+        return [Math.floor(Math.random() * 24)];
+      }
+
+      // 2-3 random tiles (30%)
+      if (roll < 0.70) {
+        const count = Math.floor(Math.random() * 2) + 2;
+        const tiles: number[] = [];
+        while (tiles.length < count) {
+          const t = Math.floor(Math.random() * 24);
+          if (!tiles.includes(t)) tiles.push(t);
+        }
+        return tiles;
+      }
+
+      // Row (10%)
+      if (roll < 0.80) {
+        const row = Math.floor(Math.random() * gridSize);
+        return Array.from({ length: gridSize }, (_, col) => row * gridSize + col)
+          .filter(t => t < 24); // Exclude tile 24 (empty)
+      }
+
+      // Column (10%)
+      if (roll < 0.90) {
+        const col = Math.floor(Math.random() * gridSize);
+        return Array.from({ length: gridSize }, (_, row) => row * gridSize + col)
+          .filter(t => t < 24);
+      }
+
+      // Four corners (5%)
+      if (roll < 0.95) {
+        // Corners: 0 (top-left), 4 (top-right), 20 (bottom-left), 24 (bottom-right, but may be empty)
+        return [0, 4, 20, 24].filter(t => t < 24);
+      }
+
+      // Diagonal (3%)
+      if (roll < 0.98) {
+        const mainDiag = [0, 6, 12, 18, 24].filter(t => t < 24);
+        const antiDiag = [4, 8, 12, 16, 20].filter(t => t < 24);
+        return Math.random() < 0.5 ? mainDiag : antiDiag;
+      }
+
+      // Whole board - all 24 tiles! (2%)
+      return Array.from({ length: 24 }, (_, i) => i);
+    };
+
+    const interval = setInterval(() => {
+      const tilesToFlip = getFlipPattern();
+
+      // Get new discs that aren't currently shown on any tile
+      const currentDiscIds = new Set(tileDiscs.map(d => d.id));
+      const availableDiscs = coversToShow.filter(d => !currentDiscIds.has(d.id));
+
+      // Need enough unique discs for all tiles we want to flip
+      if (availableDiscs.length < tilesToFlip.length) return;
+
+      // Shuffle available discs and pick one unique disc per tile
+      const shuffledDiscs = [...availableDiscs].sort(() => Math.random() - 0.5);
+
+      // Prepare new discs for each tile - each gets a unique disc
+      const newDiscsMap = new Map<number, Disc>();
+      tilesToFlip.forEach((tileId, index) => {
+        newDiscsMap.set(tileId, shuffledDiscs[index]);
+      });
+
+      // Phase 1: Start flip to 90° (edge-on)
+      setFlippingTiles(newDiscsMap);
+
+      // Phase 2: At 90° (halfway), swap the disc and continue to 180°
+      // But we want a single flip, so we update disc and let it complete
+      setTimeout(() => {
+        // Update the actual disc data
+        setTileDiscs(prev => {
+          const updated = [...prev];
+          newDiscsMap.forEach((newDisc, tileId) => {
+            updated[tileId] = newDisc;
+          });
+          return updated;
+        });
+        // Clear flipping state - disc is now updated, tile shows new cover
+        setFlippingTiles(new Map());
+      }, 300); // At the halfway point when tile is edge-on
+    }, 8000); // Flip tiles every 8 seconds
+
+    return () => clearInterval(interval);
+  }, [isActive, animationStyle, tileDiscs, coversToShow]);
 
   // "Now Playing" interruption logic
   useEffect(() => {
@@ -247,6 +441,15 @@ export function Screensaver({ isActive, onExit, animationStyle }: ScreensaverPro
             reducedMotion={reducedMotion}
           />
         )}
+
+        {animationStyle === 'slidepuzzle' && (
+          <SlidePuzzleAnimation
+            discs={tileDiscs}
+            tilePositions={tilePositions}
+            flippingTiles={flippingTiles}
+            reducedMotion={reducedMotion}
+          />
+        )}
       </div>
 
       {/* "Now Playing" overlay */}
@@ -376,6 +579,85 @@ function MosaicAnimation({
             />
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+// Slide Puzzle Animation
+function SlidePuzzleAnimation({
+  discs,
+  tilePositions,
+  flippingTiles,
+  reducedMotion,
+}: {
+  discs: Disc[];
+  tilePositions: number[]; // tilePositions[tileId] = grid position
+  flippingTiles: Map<number, Disc>; // tiles currently flipping and their new disc
+  reducedMotion: boolean;
+}) {
+  const gridSize = 5;
+  const gap = 4; // gap in pixels
+
+  // Calculate tile size as percentage (accounting for gaps)
+  const tileSize = `calc((100% - ${(gridSize - 1) * gap}px) / ${gridSize})`;
+
+  // Convert grid position to x,y coordinates
+  const getPosition = (gridPos: number) => {
+    const row = Math.floor(gridPos / gridSize);
+    const col = gridPos % gridSize;
+    return { row, col };
+  };
+
+  return (
+    <div className="absolute inset-0 flex items-center justify-center bg-black">
+      <div
+        className="relative"
+        style={{
+          width: `min(100vw, 100vh)`,
+          height: `min(100vw, 100vh)`,
+          perspective: '1000px',
+        }}
+      >
+        {/* Render tiles 0-23 (the actual album covers) */}
+        {discs.map((disc, tileId) => {
+          const pos = tilePositions[tileId];
+          if (pos === undefined || !disc) return null;
+          const { row, col } = getPosition(pos);
+          const isFlipping = flippingTiles.has(tileId);
+
+          return (
+            <div
+              key={`tile-${tileId}`}
+              className={`absolute ${
+                reducedMotion ? '' : 'transition-all duration-500 ease-in-out'
+              }`}
+              style={{
+                width: tileSize,
+                height: tileSize,
+                transform: `translate(calc(${col} * (100% + ${gap}px)), calc(${row} * (100% + ${gap}px)))`,
+                transformStyle: 'preserve-3d',
+              }}
+            >
+              {/* Flip container - rotates to 90° (edge-on), image swaps, then back to 0° */}
+              <div
+                className={reducedMotion ? '' : 'transition-transform duration-300 ease-in-out'}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  transform: isFlipping ? 'rotateY(90deg)' : 'rotateY(0deg)',
+                }}
+              >
+                <img
+                  src={getCoverUrl(disc.cover_art_path)}
+                  alt={disc.album}
+                  className="w-full h-full object-cover"
+                  loading="lazy"
+                />
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

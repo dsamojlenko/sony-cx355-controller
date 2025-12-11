@@ -79,6 +79,7 @@ export function SettingsPage() {
                 <SelectItem value="floating">Floating - Album covers drift across the screen</SelectItem>
                 <SelectItem value="kenburns">Ken Burns - Slow zoom and pan on each cover</SelectItem>
                 <SelectItem value="mosaic">Mosaic - Grid of covers that shuffle</SelectItem>
+                <SelectItem value="slidepuzzle">Slide Puzzle - Tiles slide like a 15-puzzle</SelectItem>
               </SelectContent>
             </Select>
           </div>
