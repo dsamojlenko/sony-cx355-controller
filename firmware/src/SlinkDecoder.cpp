@@ -343,6 +343,10 @@ void SlinkDecoder::_handleTrackStatusFrame(const uint8_t* bytes, int len) {
         trackNumber = _decodeTrackNumberFromIndex(trackIndex);
     }
 
+    // If disc or track changed, the player must be playing
+    // (paused or stopped players don't change tracks)
+    bool discOrTrackChanged = (_state.discNumber != discNumber || _state.trackNumber != trackNumber);
+
     _state.haveStatus  = true;
     _state.player      = player;
     _state.discCode    = discCode;
@@ -351,6 +355,13 @@ void SlinkDecoder::_handleTrackStatusFrame(const uint8_t* bytes, int len) {
     _state.trackIndex  = trackIndex;
     _state.discNumber  = discNumber;
     _state.trackNumber = trackNumber;
+
+    // Infer play state from track changes - if track changed, we're playing
+    if (discOrTrackChanged && _state.haveStatus) {
+        _state.playing = true;
+        _state.paused = false;
+        _state.stopped = false;
+    }
 
     if (changed) {
         Serial.print(F("[STATUS] Dev=0x"));
