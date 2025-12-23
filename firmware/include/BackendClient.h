@@ -67,7 +67,7 @@ private:
 
     // Command polling
     unsigned long _lastPoll;
-    static const unsigned long POLL_INTERVAL = 500;  // 500ms
+    static const unsigned long POLL_INTERVAL = 1000;  // 1 second (increased from 500ms)
     BackendCommand _pendingCommand;
     bool _hasPendingCommand;
 
@@ -80,4 +80,10 @@ private:
     int _lastDisc;
     int _lastTrack;
     const char* _lastState;
+
+    // Failure tracking for backoff
+    int _consecutiveFailures;
+    unsigned long _lastFailureTime;
+    static const int MAX_BACKOFF_FAILURES = 5;  // After this many failures, wait longer
+    static const unsigned long BACKOFF_DELAY = 5000;  // 5 second backoff after repeated failures
 };

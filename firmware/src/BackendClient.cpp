@@ -17,6 +17,8 @@ BackendClient::BackendClient()
     , _lastDisc(-1)
     , _lastTrack(-1)
     , _lastState(nullptr)
+    , _consecutiveFailures(0)
+    , _lastFailureTime(0)
 {
     _backendHost[0] = '\0';
     memset(&_pendingCommand, 0, sizeof(_pendingCommand));
@@ -90,12 +92,21 @@ void BackendClient::loop() {
     }
 
     // Poll for commands if backend is connected
-    if (_backendFound && now - _lastPoll > POLL_INTERVAL) {
+    // Apply backoff if we've had too many consecutive failures
+    unsigned long effectivePollInterval = POLL_INTERVAL;
+    if (_consecutiveFailures >= MAX_BACKOFF_FAILURES) {
+        effectivePollInterval = BACKOFF_DELAY;
+    }
+
+    if (_backendFound && now - _lastPoll > effectivePollInterval) {
         _lastPoll = now;
 
         if (!_hasPendingCommand) {
             char response[256];
             if (_httpGet("/api/esp32/poll", response, sizeof(response))) {
+                // Success - reset failure counter
+                _consecutiveFailures = 0;
+
                 // Parse JSON response
                 JsonDocument doc;
                 DeserializationError error = deserializeJson(doc, response);
@@ -126,6 +137,10 @@ void BackendClient::loop() {
                     }
                     Serial.println();
                 }
+            } else {
+                // Failure - increment counter
+                _consecutiveFailures++;
+                _lastFailureTime = now;
             }
         }
     }
@@ -218,6 +233,14 @@ bool BackendClient::sendState(const PlayerState& state) {
         return false;
     }
 
+    // If we're in backoff mode due to failures, skip sending
+    if (_consecutiveFailures >= MAX_BACKOFF_FAILURES) {
+        unsigned long now = millis();
+        if (now - _lastFailureTime < BACKOFF_DELAY) {
+            return false;  // Still in backoff period
+        }
+    }
+
     // Avoid sending duplicate states
     if (state.player == _lastPlayer && state.disc == _lastDisc &&
         state.track == _lastTrack && state.state == _lastState) {
@@ -238,9 +261,12 @@ bool BackendClient::sendState(const PlayerState& state) {
         _lastDisc = state.disc;
         _lastTrack = state.track;
         _lastState = state.state;
+        _consecutiveFailures = 0;  // Reset on success
         return true;
     }
 
+    _consecutiveFailures++;
+    _lastFailureTime = millis();
     return false;
 }
 
@@ -294,7 +320,9 @@ bool BackendClient::_httpPost(const char* path, const char* json) {
 
     http.begin(url);
     http.addHeader("Content-Type", "application/json");
-    http.setTimeout(10000);  // 10 second timeout
+    http.addHeader("Connection", "close");  // Ensure connection is closed properly
+    http.setTimeout(3000);  // 3 second timeout (reduced from 10)
+    http.setReuse(false);   // Don't reuse connection (helps with socket cleanup)
 
     int httpCode = http.POST(json);
     http.end();
@@ -339,7 +367,9 @@ bool BackendClient::_httpGet(const char* path, char* response, size_t maxLen) {
     snprintf(url, sizeof(url), "http://%s:%d%s", _backendHost, _backendPort, path);
 
     http.begin(url);
-    http.setTimeout(10000);  // 10 second timeout
+    http.addHeader("Connection", "close");  // Ensure connection is closed properly
+    http.setTimeout(3000);  // 3 second timeout (reduced from 10)
+    http.setReuse(false);   // Don't reuse connection (helps with socket cleanup)
 
     int httpCode = http.GET();
 
